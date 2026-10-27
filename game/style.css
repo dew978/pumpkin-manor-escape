@@ -81,8 +81,9 @@ kbd { font-family: var(--f-num); font-size: 12px; color: var(--dim); border: 1px
 #knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255, 210, 122, .35); border: 2px solid rgba(255, 210, 122, .6); }
 
 /* 쪽지 */
-#note { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(760px, 100%); max-height: 64%; overflow-y: auto;
-  background: var(--paper); color: var(--ink); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, .6);
+/* 쪽지 창은 루미 대사창(아래 가운데) 위에 띄운다: 대사창과 겹치지 않게 아래를 --dlg-space만큼 비우고, 위는 감지기 아래까지 */
+#note { --dlg-space: 206px; position: absolute; z-index: 4; left: 50%; bottom: var(--dlg-space); transform: translateX(-50%); width: min(760px, calc(100% - 16px)); max-height: calc(100% - var(--dlg-space) - 118px); overflow-y: auto;
+  background: var(--paper); color: var(--ink); border-radius: 14px; box-shadow: 0 -10px 40px rgba(0, 0, 0, .6);
   padding: 14px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background-image: repeating-linear-gradient(0deg, transparent 0 31px, rgba(120, 80, 30, .08) 31px 32px); }
 .note-head { display: flex; align-items: center; gap: 10px; }
@@ -337,7 +338,9 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 #dialog .line { margin: 2px 0 0; font-size: 18px; line-height: 1.5; min-height: 3em; word-break: keep-all; }
 #dialog .next { position: absolute; right: 16px; bottom: 10px; font-size: 14px; color: var(--candle); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-@media (max-width: 760px) { #dialog { width: calc(100% - 24px); min-width: 0; bottom: 150px; } #dialog .face { width: 60px; height: 60px; } #dialog .line { font-size: 16px; } }
+@media (max-width: 760px) { #note { --dlg-space: 266px; } #dialog { width: calc(100% - 24px); min-width: 0; bottom: 150px; } #dialog .face { width: 60px; height: 60px; } #dialog .line { font-size: 16px; } }
+/* 낮은 화면에서는 쪽지 창이 감지기 자리까지 올라가도 된다 */
+@media (max-height: 700px) { #note { max-height: calc(100% - var(--dlg-space) - 64px); } }
 @media (prefers-reduced-motion: reduce) { #dialog.in, #dialog .next { animation: none; } }
 
 /* 결과 화면 머리: 제목과 별을 크게 가운데 */
