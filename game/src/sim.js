@@ -10,17 +10,23 @@ export const STATE_CODES = { patrol: 0, alert: 1, chase: 2, search: 3, rest: 4, 
 export const THROW_RANGE = 7, LURE_R = 6, EAT_T = 4.5, THROW_FLY = 0.55;
 
 export class Sim {
-  constructor({ stageIdx, puzzle, chestQuiz = [], roster, diff = 'easy', seed = Date.now() }) {
+  // puzzles: 이 층의 쪽지 문제들(차례로 하나씩). round: 몇 번째 쪽지부터(다시 도전하면 실패한 쪽지부터)
+  constructor({ stageIdx, puzzles, puzzle, round = 0, chestQuiz = [], roster, diff = 'easy', seed = Date.now() }) {
     this.stageIdx = stageIdx;
     this.stage = STAGES[stageIdx];
     this.g = parseMap(this.stage.map);
-    this.puzzle = puzzle;
+    this.puzzles = puzzles?.length ? puzzles : [puzzle];
+    this.notes = this.puzzles.length;
+    this.round = Math.max(0, Math.min(this.notes - 1, round | 0));
+    this.puzzle = this.puzzles[this.round];
     this.rand = rng(seed);
     this.diff = DIFF_SPEED[diff] ?? 1; this.diffKey = diff;
     this.solo = roster.length === 1;
     this.phase = 'play';
     this.overReason = '';
-    this.time = this.stage.time;
+    // 층 시간은 쪽지 수로 나눠 남은 쪽지만큼 준다(중간부터 다시 하면 그만큼 짧다)
+    this.budget = Math.round(this.stage.time * (this.notes - this.round) / this.notes);
+    this.time = this.budget;
     this.elapsed = 0;
     this.events = [];
     this.stats = { caught: 0, stolen: 0, wrong: 0, items: 0, candy: 0, chestOk: 0 };
@@ -38,9 +44,7 @@ export class Sim {
         hidden: -1, hideT: 0, caged: -1, escaped: false, invuln: 2, item: null, fastT: 0, candy: 0, throwT: 0, peekT: 0, tp: { seq: 1, x: this.spawn.c + o[0], z: this.spawn.r + o[1] } });
     });
 
-    // 쪽지 찾기: 뒤질 수 있는 가구(옆에 설 바닥이 있는 칸) 중 서로 떨어진 10곳을 고르고,
-    // 그중 서로·시작 위치와 가장 멀리 흩어진 4곳에 진짜 쪽지를 넣는다. 나머지 6곳은 꽝(작은 보상)
-    // 시작 위치에서 걸어갈 수 있는 바닥만 '옆에 설 곳'으로 친다(가구에 갇힌 작은 빈칸은 빼고)
+    // 쪽지 찾기: 시작 위치에서 걸어갈 수 있는 바닥만 '옆에 설 곳'으로 친다(가구에 갇힌 작은 빈칸은 빼고)
     const g = this.g, reach = new Set([this.spawn.r * g.W + this.spawn.c]), q = [this.spawn];
     while (q.length) {
       const t = q.shift();
@@ -56,22 +60,10 @@ export class Sim {
       if (!SEARCHABLE[g.at(c, r)] || Math.hypot(c - this.spawn.c, r - this.spawn.r) < 4) continue;
       if (open(c + 1, r) || open(c - 1, r) || open(c, r + 1) || open(c, r - 1)) cand.push({ c, r, ch: g.at(c, r) });
     }
-    this.shuffle(cand);
-    const picked = [];
-    for (const gap of [5, 4, 3, 2]) {
-      for (const t of cand) if (picked.length < SEARCH_SPOTS && !picked.includes(t) && picked.every(o => Math.hypot(o.c - t.c, o.r - t.r) >= gap)) picked.push(t);
-      if (picked.length >= SEARCH_SPOTS) break;
-    }
-    this.spots = picked.map((t, id) => ({ id, c: t.c, r: t.r, ch: t.ch, searched: false, frag: -1, lockT: 0 }));
-    const real = [];
-    const score = s => Math.min(Math.hypot(s.c - this.spawn.c, s.r - this.spawn.r) * 0.6, ...real.map(o => Math.hypot(o.c - s.c, o.r - s.r))) + this.rand() * 3;
-    while (real.length < puzzle.parts.length && real.length < this.spots.length) {
-      const best = this.spots.filter(s => !real.includes(s)).sort((a, b) => score(b) - score(a))[0]; real.push(best);
-    }
-    this.fragments = puzzle.parts.map((_, i) => { const s = real[i]; s.frag = i; return { id: i, x: s.c, z: s.r, taken: false, spot: s.id }; });
+    this.cand = cand; this.usedSpots = new Set();
+    this.hideNote();
     // 아이템: 후보 칸마다 하나, 모래시계가 가장 많다
     this.items = this.shuffle(sp.i.slice()).map((s, i) => ({ id: i, type: ['time', 'crystal', 'potion', 'time', 'crystal', 'time'][i % 6], x: s.c, z: s.r, taken: false }));
-    this.pz = { have: new Set(), assembled: false, open: false, wrong: 0 };
     // 호박 상자: 다가가 문제를 맞히면 아이템. 상자마다 한 번만 열린다
     this.chests = sp.c.map((s, i) => ({ id: i, c: s.c, r: s.r, opened: false }));
     // 사탕: 시작 위치에서 떨어진 빈 바닥에 서로 떨어뜨려 흩어 둔다(점수·별)
@@ -94,6 +86,36 @@ export class Sim {
         // 층이 시작하면 괴물은 6초쯤 기다린다(아이들이 주변을 살필 시간)
         alertT: 0, lostT: 0, chaseT: 0, repathT: 0, restT: 6 + id * 1.5, searchT: 0, lungeT: 0, lungeDir: null, blindT: 0, shoutT: 0, sawHide: -1, growlT: 3 + this.rand() * 5 };
     });
+  }
+
+  // 쪽지 한 장 숨기기: 뒤질 수 있는 가구 중 서로 떨어진 10곳을 고르고(앞 쪽지에서 쓴 가구는 되도록 빼고),
+  // 그중 서로·시작 위치와 가장 멀리 흩어진 4곳에 진짜 조각을 넣는다. 나머지 6곳은 꽝(작은 보상)
+  hideNote() {
+    const fresh = this.cand.filter(t => !this.usedSpots.has(t.r * this.g.W + t.c));
+    const cand = this.shuffle(fresh.length >= SEARCH_SPOTS * 1.5 ? fresh : this.cand.slice());
+    const picked = [];
+    for (const gap of [5, 4, 3, 2]) {
+      for (const t of cand) if (picked.length < SEARCH_SPOTS && !picked.includes(t) && picked.every(o => Math.hypot(o.c - t.c, o.r - t.r) >= gap)) picked.push(t);
+      if (picked.length >= SEARCH_SPOTS) break;
+    }
+    for (const t of picked) this.usedSpots.add(t.r * this.g.W + t.c);
+    this.spots = picked.map((t, id) => ({ id, c: t.c, r: t.r, ch: t.ch, searched: false, frag: -1, lockT: 0 }));
+    const real = [], puzzle = this.puzzle;
+    const score = s => Math.min(Math.hypot(s.c - this.spawn.c, s.r - this.spawn.r) * 0.6, ...real.map(o => Math.hypot(o.c - s.c, o.r - s.r))) + this.rand() * 3;
+    while (real.length < puzzle.parts.length && real.length < this.spots.length) {
+      const best = this.spots.filter(s => !real.includes(s)).sort((a, b) => score(b) - score(a))[0]; real.push(best);
+    }
+    this.fragments = puzzle.parts.map((_, i) => { const s = real[i]; s.frag = i; return { id: i, x: s.c, z: s.r, taken: false, spot: s.id }; });
+    this.pz = { have: new Set(), assembled: false, open: false, wrong: 0 };
+  }
+  // 쪽지 하나를 풀었는데 아직 남았으면: 다음 쪽지가 다른 가구들에 숨겨진다
+  nextNote(p) {
+    this.round++; this.puzzle = this.puzzles[this.round];
+    this.hideNote();
+    for (const o of this.players.values()) { o.invuln = Math.max(o.invuln, 3); o.peekT = 0; }
+    this.snd('paper', p.x, p.z);
+    this.ev({ k: 'note', rd: this.round, name: p.name });
+    this.toast(`📜 ${josa(p.name, '이가')} 정답! 그런데 쪽지가 ${this.notes - this.round}장 더 남았어요. 다른 가구에 새 쪽지가 숨겨졌어요`);
   }
 
   d2(a, b) { return (a.c - b.c) ** 2 + (a.r - b.r) ** 2; }
@@ -262,7 +284,8 @@ export class Sim {
     // 보기 고르기: 고른 보기 글이 정답 글과 같은지
     const norm = s => String(s).replace(/\s/g, '');
     const ok = norm(v) === norm(this.puzzle.answer);
-    if (ok) {
+    if (ok && this.round < this.notes - 1) this.nextNote(p);
+    else if (ok) {
       this.pz.open = true;
       // 문이 열리는 장면(약 3초) 동안은 아무도 잡히지 않는다
       for (const o of this.players.values()) o.invuln = Math.max(o.invuln, 4);
@@ -284,7 +307,9 @@ export class Sim {
     let msg = `💀 ${josa(p.name, '이가')} ${m.spec.name}에게 잡혔어요!`;
     // 확실한 불이익 1: 모은 쪽지 하나를 빼앗겨 다시 숨겨진다
     // (느림에서는 빼앗지 않는다: 저학년이 다시 찾느라 지치지 않게)
-    if (this.diffKey !== 'easy' && !this.pz.assembled && this.pz.have.size > 0) {
+    // 한 번 빼앗기면 30초 동안은 다시 빼앗기지 않는다(쪽지가 여러 장이라 연달아 잃으면 끝이 안 난다)
+    if (this.diffKey !== 'easy' && !this.pz.assembled && this.pz.have.size > 0 && this.elapsed >= (this.stealAt ?? -99) + 30) {
+      this.stealAt = this.elapsed;
       const ids = [...this.pz.have]; const id = ids[Math.floor(this.rand() * ids.length)];
       this.pz.have.delete(id);
       let pool = this.spots.filter(s => !s.searched && s.frag < 0);
@@ -558,7 +583,7 @@ export class Sim {
     if (this.pz.open && ps.some(p => p.escaped) && ps.every(p => p.escaped || p.caged >= 0)) {
       this.phase = 'clear';
       // 별: 탈출 1 + 시간 1/3 이상 남김 1 + 사탕 60% 이상 1
-      const stars = 1 + (this.time >= this.stage.time / 3 ? 1 : 0) + (this.stats.candy >= Math.ceil(this.candies.length * 0.6) ? 1 : 0);
+      const stars = 1 + (this.time >= this.budget / 3 ? 1 : 0) + (this.stats.candy >= Math.ceil(this.candies.length * 0.6) ? 1 : 0);
       this.result = { time: this.elapsed, left: this.time, escaped: ps.filter(p => p.escaped).length, total: ps.length, candyTotal: this.candies.length, stars, ...this.stats };
     }
   }
@@ -566,7 +591,7 @@ export class Sim {
   snapshot() {
     const ev = this.events; this.events = [];
     return {
-      t: 's', st: this.stageIdx, ph: this.phase, why: this.overReason, tm: Math.round(this.time * 10) / 10,
+      t: 's', st: this.stageIdx, rd: this.round, ph: this.phase, why: this.overReason, tm: Math.round(this.time * 10) / 10,
       p: [...this.players.values()].map(p => [p.slot, +p.x.toFixed(2), +p.z.toFixed(2), +p.face.toFixed(2),
         (p.hidden >= 0 ? 1 : 0) | (p.caged >= 0 ? 2 : 0) | (p.escaped ? 4 : 0) | (p.moving ? 8 : 0) | (p.invuln > 0 ? 16 : 0) | (p.fastT > 0 ? 32 : 0),
         p.item ? ITEM_CODES.indexOf(p.item) : -1, p.name, p.char, p.tp.seq, p.tp.x, p.tp.z, p.hidden, p.candy]),

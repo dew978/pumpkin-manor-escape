@@ -284,24 +284,88 @@ export function splitParts(q, n = 4) {
 const shuffle = (a, r = Math.random) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const toQuiz = (it, r) => ({ q: it.q, choices: shuffle(it.c.slice(), r), answer: it.c[0], hint: it.hint || '' });
 
-// 한 판의 문제 고르기: 층 문제 3개(교과 2·할로윈 1 또는 교과 1·할로윈 2, 순서 섞음)
-// + 층마다 호박 상자·가구 뒤지기에 쓸 문제 묶음 perFloor개. 남은 문제를 섞어 차례로 나눠 주고,
-// 모자라면 다시 섞어 잇되 같은 층 안에서는 겹치지 않게 한다
-export function pickQuestions(bank, grade, perFloor = 18, r = Math.random) {
+// 학년 산수 문제를 그때그때 만든다(할로윈 이야기로). 기본 문제 은행을 쓸 때 가구·상자 문제에 섞어 반복을 줄인다
+const ri = (r, a, b) => a + Math.floor(r() * (b - a + 1));
+const pickOne = (r, a) => a[Math.floor(r() * a.length)];
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+// 정답 근처의 그럴듯한 오답 3개(겹치지 않게, 0보다 크게)
+function nearMiss(ans, r, steps = [1, 2, 10, -1, -2, -10, 3, 5]) {
+  const out = new Set();
+  for (const s of shuffle(steps.slice(), r)) { const v = ans + s; if (v > 0 && v !== ans) out.add(v); if (out.size >= 3) break; }
+  for (let k = 4; out.size < 3; k++) if (ans + k !== ans) out.add(ans + k);
+  return [...out];
+}
+const numQ = (q, ans, unit, hint, r, steps) => ({ q, c: [ans, ...nearMiss(ans, r, steps)].map(v => `${v}${unit}`), hint });
+const MATH = {
+  1: [
+    r => { const a = ri(r, 3, 9), b = ri(r, 2, 9); return numQ(`사탕 ${a}개를 가지고 있었는데 이웃집에서 ${b}개를 더 받았어요. 사탕은 모두 몇 개일까요?`, a + b, '개', `${a}에서 ${b}만큼 이어 세어 보세요.`, r); },
+    r => { const a = ri(r, 10, 18), b = ri(r, 2, 9); return numQ(`호박 ${a}개 가운데 ${b}개로 잭오랜턴을 만들었어요. 남은 호박은 몇 개일까요?`, a - b, '개', `${a}에서 ${b}만큼 거꾸로 세어 보세요.`, r); },
+    r => { const a = ri(r, 2, 6), b = ri(r, 2, 6), c = ri(r, 1, 5); return numQ(`박쥐가 ${a}마리, ${b}마리, ${c}마리씩 날아왔어요. 박쥐는 모두 몇 마리일까요?`, a + b + c, '마리', '두 수를 먼저 더하고 나머지를 더해요.', r); },
+  ],
+  2: [
+    r => { const a = ri(r, 2, 9); return numQ(`거미 한 마리의 다리는 8개예요. 거미 ${a}마리의 다리는 모두 몇 개일까요?`, a * 8, '개', `8단을 외워 보세요. 8 × ${a}`, r, [8, -8, 1, -1, 2]); },
+    r => { const a = ri(r, 2, 9), b = ri(r, 2, 9); return numQ(`사탕 바구니가 ${a}개 있고, 바구니마다 사탕이 ${b}개씩 들어 있어요. 사탕은 모두 몇 개일까요?`, a * b, '개', `${b}단을 외워 보세요. ${b} × ${a}`, r, [a, -a, b, -b, 1]); },
+    r => { const a = ri(r, 25, 68), b = ri(r, 14, 29); return numQ(`마녀가 마법 물약 ${a}병을 만들고, ${b}병을 더 만들었어요. 물약은 모두 몇 병일까요?`, a + b, '병', '일의 자리끼리 더해서 10이 넘으면 받아올려요.', r); },
+    r => { const a = ri(r, 51, 95), b = ri(r, 17, 38); return numQ(`저택 계단은 ${a}칸이에요. ${b}칸을 올라왔다면 몇 칸이 남았을까요?`, a - b, '칸', '일의 자리를 뺄 수 없으면 십의 자리에서 받아내려요.', r); },
+  ],
+  3: [
+    r => { const a = ri(r, 230, 580), b = ri(r, 140, 390); return numQ(`할로윈 축제에 어른 ${a}명과 어린이 ${b}명이 왔어요. 모두 몇 명일까요?`, a + b, '명', '같은 자리 수끼리 더해요.', r, [10, -10, 100, -100, 1]); },
+    r => { const b = ri(r, 3, 9), q = ri(r, 3, 9); return numQ(`사탕 ${b * q}개를 친구 ${b}명이 똑같이 나누면 한 명이 몇 개씩 가질까요?`, q, '개', `${b} × □ = ${b * q}이 되는 수를 찾아요.`, r, [1, -1, 2, -2, b]); },
+    r => { const a = ri(r, 12, 39), b = ri(r, 3, 8); return numQ(`호박 한 상자에 호박이 ${a}개씩 들어 있어요. ${b}상자에는 호박이 모두 몇 개일까요?`, a * b, '개', `${a} × ${b}: 십의 자리와 일의 자리를 따로 곱해 더해요.`, r, [10, -10, b, -b, 1]); },
+    r => { const h = ri(r, 1, 3), m = ri(r, 10, 50); return numQ(`유령 파티가 밤 9시에 시작해서 ${h}시간 ${m}분 동안 열렸어요. 모두 몇 분 동안 열렸을까요?`, h * 60 + m, '분', '1시간은 60분이에요.', r, [-60, 60, 10, -10, 40]); },
+  ],
+  4: [
+    r => { const a = ri(r, 24, 68), b = ri(r, 12, 35); return numQ(`잭오랜턴 한 개에 초가 ${a}개 필요해요. 잭오랜턴 ${b}개에는 초가 몇 개 필요할까요?`, a * b, '개', `${a} × ${b}를 ${a} × ${Math.floor(b / 10) * 10}과 ${a} × ${b % 10}로 나눠 더해요.`, r, [10, -10, a, -a, 100]); },
+    r => { const b = ri(r, 12, 24), q = ri(r, 11, 30); return numQ(`사탕 ${b * q}개를 ${b}봉지에 똑같이 나누어 담으면 한 봉지에 몇 개씩 담을까요?`, q, '개', `${b} × □ = ${b * q}이 되는 수를 찾아요.`, r, [1, -1, 2, 10, -2]); },
+    r => { const d = ri(r, 5, 12), a = ri(r, 1, d - 2), b = ri(r, 1, d - 1 - a); const c = [`${a + b}/${d}`, `${a + b}/${d * 2}`, `${a * b}/${d}`, `${Math.abs(a - b) || a + b + 1}/${d}`]; return { q: `마녀가 물약을 ${a}/${d}병 마시고, 또 ${b}/${d}병 마셨어요. 모두 몇 병을 마셨을까요?`, c: [...new Set(c)].length === 4 ? c : [`${a + b}/${d}`, `${a + b}/${d * 2}`, `${a + b + 1}/${d}`, `${a + b + 2}/${d}`], hint: '분모가 같으면 분자끼리 더해요.' }; },
+    r => { const n = ri(r, 2, 9), m = ri(r, 1, 9), k = ri(r, 1, 9); return numQ(`10000이 ${n}개, 1000이 ${m}개, 10이 ${k}개인 수는 얼마일까요?`, n * 10000 + m * 1000 + k * 10, '', '자리마다 수를 써 넣고, 없는 자리는 0이에요.', r, [-1000, 1000, 100, -10, 9000]); },
+  ],
+  5: [
+    r => { const a = ri(r, 2, 6), b = pickOne(r, [3, 4, 6, 8, 9, 10].filter(x => x !== a)); const l = a * b / gcd(a, b); return numQ(`초록 등불은 ${a}초마다, 주황 등불은 ${b}초마다 깜박여요. 두 등불이 함께 깜박인 뒤 다시 함께 깜박이는 것은 몇 초 뒤일까요?`, l, '초', `${a}와 ${b}의 최소공배수를 구해요.`, r, [a, b, -a, a * b - l || 2 * l, 1]); },
+    r => { const g = ri(r, 3, 8), a = g * ri(r, 2, 5), b = g * ri(r, 2, 5); const G = gcd(a, b); return numQ(`사탕 ${a}개와 초콜릿 ${b}개를 남김없이 똑같이 나누어 주려고 해요. 가장 많은 친구에게 나누어 주면 몇 명일까요?`, G, '명', `${a}와 ${b}의 최대공약수를 구해요.`, r, [1, -1, G, 2, -2]); },
+    r => { const w = ri(r, 4, 12), h = ri(r, 3, 9); return numQ(`가로 ${w}m, 세로 ${h}m인 직사각형 호박밭의 넓이는 몇 ㎡일까요?`, w * h, '㎡', '직사각형의 넓이 = 가로 × 세로', r, [w, -w, h, (w + h) * 2 - w * h || 3, 1]); },
+    r => { const a = ri(r, 12, 48) / 10, b = ri(r, 2, 6); const v = Math.round(a * b * 10) / 10; const c = [v, Math.round((v + 1) * 10) / 10, Math.round(v * 10) / 100 || v + 2, Math.round((v - 0.1) * 10) / 10]; return { q: `물약 한 병은 ${a}L예요. ${b}병은 모두 몇 L일까요?`, c: [...new Set(c.map(String))].length === 4 ? c.map(x => `${x}L`) : [`${v}L`, `${v + 1}L`, `${v + 2}L`, `${v + 3}L`], hint: `${a * 10} × ${b}를 구한 뒤 소수점을 한 자리 옮겨요.` }; },
+  ],
+  6: [
+    r => { const t = pickOne(r, [20, 25, 40, 50]), p = pickOne(r, [10, 20, 30, 40, 50, 60]); const v = t * p / 100; return numQ(`사탕 ${t}개 가운데 ${p}%를 먹었어요. 먹은 사탕은 몇 개일까요?`, v, '개', `${t} × ${p}/100을 계산해요.`, r, [1, -1, 2, 5, -2]); },
+    r => { const a = ri(r, 2, 5), b = ri(r, 2, 5), k = ri(r, 2, 6); return numQ(`마녀 물약은 박쥐 날개와 거미줄을 ${a} : ${b}로 섞어요. 박쥐 날개가 ${a * k}장이면 거미줄은 몇 개 필요할까요?`, b * k, '개', `${a}에 ${k}를 곱해 ${a * k}가 되었으니 ${b}에도 ${k}를 곱해요.`, r, [k, -k, a, 1, -1]); },
+    r => { const d = ri(r, 3, 6), a = ri(r, 2, 4) * d; const v = a / d; return numQ(`호박 수프 ${a}L를 ${d}명이 똑같이 나누어 먹으면 한 명이 몇 L씩 먹을까요?`, v, 'L', `${a} ÷ ${d}를 계산해요.`, r, [1, -1, 2, d, -2]); },
+    r => { const s = ri(r, 2, 5); return numQ(`한 모서리가 ${s}cm인 정육면체 선물 상자의 부피는 몇 ㎤일까요?`, s * s * s, '㎤', '정육면체의 부피 = 한 모서리 × 한 모서리 × 한 모서리', r, [s, -s, s * s, 1, -1]); },
+  ],
+};
+export function mathQuiz(grade, r = Math.random) {
+  const g = Math.min(6, Math.max(1, grade | 0));
+  return pickOne(r, MATH[g])(r);
+}
+
+// 한 판의 문제 고르기: 층마다 쪽지 문제 notes[i]개(교과·할로윈 섞음)
+// + 층마다 호박 상자·가구 뒤지기에 쓸 문제 묶음(상자 CHEST 개 + 쪽지 한 장에 가구 문제 13개).
+// 남은 문제를 섞어 차례로 나눠 주고, 모자라면 다시 섞어 잇되 같은 층 안에서는 겹치지 않게 한다.
+// math면 묶음의 1/3쯤을 학년 산수 문제(그때그때 만듦)로 채운다
+export function pickQuestions(bank, grade, { notes = [1, 1, 1], chest = 5, perNote = 13, math = false, r = Math.random } = {}) {
   const g = Math.min(6, Math.max(1, grade | 0));
   const maxLv = g <= 2 ? 1 : g <= 4 ? 2 : 3, minLv = g >= 5 ? 2 : 1;
   const hall = shuffle(bank.halloween.filter(h => (h.lv ?? 1) <= maxLv && (h.lv ?? 1) >= Math.min(minLv, maxLv)), r);
   const hallAll = hall.length >= 2 ? hall : shuffle(bank.halloween.slice(), r);
   const cur = shuffle(bank[String(g)].slice(), r);
-  const nHall = r() < 0.5 ? 1 : 2;
-  const floors = shuffle([...hallAll.slice(0, nHall), ...cur.slice(0, 3 - nHall)], r)
-    .map(it => ({ ...toQuiz(it, r), parts: splitParts(it.q) }));
-  const rest = [...hallAll.slice(nHall), ...cur.slice(3 - nHall)];
-  const need = perFloor * floors.length, deck = [];
-  while (deck.length < need) {
-    const cur = new Set(deck.slice(deck.length - (deck.length % perFloor))), next = shuffle(rest.slice(), r);
-    deck.push(...next.filter(x => !cur.has(x)), ...next.filter(x => cur.has(x)));
-  }
-  const sets = floors.map((_, i) => deck.slice(i * perFloor, (i + 1) * perFloor).map(it => toQuiz(it, r)));
-  return { floors, sets, chests: sets.flat() };
+  // 쪽지 문제: 교과와 할로윈을 번갈아(교과가 조금 더 많게)
+  const nNote = notes.reduce((a, b) => a + b, 0), nHall = Math.min(hallAll.length - 1, Math.round(nNote * 0.4)), nCur = Math.min(cur.length - 1, nNote - nHall);
+  const notePool = shuffle([...hallAll.slice(0, nHall), ...cur.slice(0, nCur)], r);
+  while (notePool.length < nNote) notePool.push(cur[notePool.length % cur.length]);
+  let k = 0;
+  const floors = notes.map(n => Array.from({ length: n }, () => { const it = notePool[k++]; return { ...toQuiz(it, r), parts: splitParts(it.q) }; }));
+  const rest = [...hallAll.slice(nHall), ...cur.slice(nCur)];
+  const sizes = notes.map(n => chest + perNote * n);
+  const sets = sizes.map(size => {
+    const nMath = math ? Math.round(size / 3) : 0, nText = size - nMath;
+    const text = []; let pool = shuffle(rest.slice(), r);
+    while (text.length < nText) { if (!pool.length) pool = shuffle(rest.slice(), r); text.push(pool.pop()); }
+    const quiz = text.map(it => toQuiz(it, r));
+    const mq = []; const seen = new Set();
+    for (let t = 0; mq.length < nMath && t < nMath * 6; t++) { const it = mathQuiz(g, r); if (!seen.has(it.q)) { seen.add(it.q); mq.push(toQuiz(it, r)); } }
+    // 산수 문제를 고르게 끼워 넣는다
+    mq.forEach((q, i) => quiz.splice(Math.min(quiz.length, Math.round((i + 0.5) * size / Math.max(1, nMath))), 0, q));
+    return quiz;
+  });
+  return { floors, sets };
 }
