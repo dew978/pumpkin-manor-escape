@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>모델 점검</title>
+<style>body{margin:0;background:#333;font:13px sans-serif;color:#fff}#info{position:fixed;left:8px;top:8px;white-space:pre;background:#000a;padding:6px}</style>
+<div id="info"></div>
+<script type="importmap">{ "imports": { "three": "../vendor/three/build/three.module.js", "three/addons/": "../vendor/three/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const names = ['boy','girl','redhood','tealgirl','reaper','knight','bat','spider','plague','hourglass','crystal','potion','lantern','chandelier','door','throne','barrel','chest','chair','book','owl','well','tree','bench','scarecrow','cage','witchhat','skull'];
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+r.outputColorSpace = THREE.SRGBColorSpace;
+const s = new THREE.Scene(); s.background = new THREE.Color(0x555566);
+s.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 1.5); d.position.set(3, 5, 4); s.add(d);
+const cols = 7, cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 200);
+cam.position.set(cols * 1.6 / 2, 9, 14); cam.lookAt(cols * 1.6 / 2, 0, 3.2);
+const loader = new GLTFLoader(); const info = [];
+names.forEach((n, i) => loader.load(`../assets/models/${n}.glb`, g => {
+  const o = g.scene, box = new THREE.Box3().setFromObject(o), size = box.getSize(new THREE.Vector3());
+  const k = 1.1 / Math.max(size.x, size.y, size.z); o.scale.setScalar(k);
+  const b2 = new THREE.Box3().setFromObject(o), c = b2.getCenter(new THREE.Vector3());
+  o.position.set((i % cols) * 1.6 - c.x, -b2.min.y, Math.floor(i / cols) * 1.8 - c.z); s.add(o);
+  // +Z 쪽(카메라 쪽)에 빨간 점: 모델 정면이 카메라를 보는지 확인
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04), new THREE.MeshBasicMaterial({ color: 0xff0000 })); dot.position.set((i % cols) * 1.6, 0.02, Math.floor(i / cols) * 1.8 + 0.65); s.add(dot);
+  let nrm = true; o.traverse(m => { if (m.isMesh && !m.geometry.attributes.normal) nrm = false; });
+  info[i] = `${i}:${n} ${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)} normals:${nrm}`;
+  document.getElementById('info').textContent = info.filter(Boolean).join('\n');
+}));
+(function loop() { requestAnimationFrame(loop); r.render(s, cam); })();
+</script>

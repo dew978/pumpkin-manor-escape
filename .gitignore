@@ -1,0 +1,12 @@
+# 그림·소리 원본(생성 중간 파일, 300MB 넘음)은 올리지 않는다. 게임에 쓰는 결과물은 game/assets에 있다
+art/
+audio_src/
+# 도구 작업 폴더
+tools/node_modules/
+tools/previews/
+tools/tmp_tex/
+# 이 컴퓨터 전용 설정
+.claude/
+node_modules/
+.DS_Store
+Thumbs.db

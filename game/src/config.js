@@ -1,0 +1,184 @@
+// 스테이지 지도, 괴물 성능. 지도 기호는 아래와 같다.
+//
+//  #  벽(정원은 산울타리)     E  탈출문(퍼즐을 풀면 열림)   P  시작 위치
+//  f  쪽지 조각 후보 칸      i  아이템 후보 칸            H  옷장(숨는 곳)
+//  X  유령 새장(잡힌 친구)   L  등불(빛)                  C  샹들리에(빛)
+//  c  호박 상자(문제를 맞히면 아이템)
+//  B  책장  Q  식탁  T  작업대  h  의자  R  왕좌  b  나무통  o  부엉이상
+//  g  묘비  t  나무  s  허수아비  w  우물
+//  r  저승사자  k  해골 기사  v  박쥐 악마  x  거미  d  까마귀 박사
+//
+// 지도는 36×25. 태블릿 조이스틱으로도 다니기 쉽게 통로는 2칸 이상, 문은 3~4칸으로 넓게 둔다.
+// 세 구역(A 11칸 · B 10칸 · C 11칸) 줄은 R()이 모자란 칸을 바닥으로 채워 길이를 맞춘다.
+
+const W = 36;
+const pad = (s, n) => (s + '.'.repeat(n)).slice(0, n);
+const R = (a, b, c) => '#' + pad(a, 11) + '#' + pad(b, 10) + '#' + pad(c, 11) + '#';
+const HALL = (s) => '#' + pad(s, W - 2) + '#';
+const WALLS = '#' + '####...####' + '#' + '###....###' + '#' + '####...####' + '#';
+const TOP = '#'.repeat(17) + 'EE' + '#'.repeat(17);
+const BOTTOM = '#'.repeat(W);
+// 세로 벽(12칸·23칸)에 3칸 높이 문을 낸다
+function withDoors(rows, doorRows) {
+  return rows.map((row, r) => {
+    if (!doorRows.includes(r)) return row;
+    const a = row.split(''); a[12] = '.'; a[23] = '.'; return a.join('');
+  });
+}
+const DOORS = [9, 10, 11, 19, 20, 21];
+
+export const STAGES = [
+  {
+    id: 1, name: '저택 1층', sub: '현관 · 도서관 · 식당', style: 'manor', time: 420,
+    fog: 0x150c20, ambient: 0.05,
+    map: withDoors([
+      TOP,
+      HALL('L..H.....f.......C.........i..H..L'),
+      HALL('..........r.......................'),
+      HALL('..................................'),
+      HALL('....i....................f........'),
+      WALLS,
+      R('...........', 'o........o', '...........'),
+      R('.BBB...BBB.', '..........', '..hQQQQh...'),
+      R('...........', '....C.....', '...........'),
+      R('...........', '..........', '..........c'),
+      R('.BBB...BBB.', '....v.....', 'b.........f'),
+      R('f..........', '..........', '...........'),
+      R('.........c.', '.i......f.', '..H....i...'),
+      R('.BB..H..BB.', '..........', '...........'),
+      R('...........', 'o........o', 'b.........b'),
+      WALLS,
+      R('...........', '..........', '...........'),
+      R('.T......R..', '.L......L.', '.T.....T...'),
+      R('...........', '..........', '...........'),
+      R('.......f...', '....P.....', 'f..........'),
+      R('..H........', '..........', '.....b.....'),
+      R('...........', '..........', '...........'),
+      R('i..........', '..........', '.X......H..'),
+      R('L........c.', 'c........c', 'b.......i.L'),
+      BOTTOM,
+    ], DOORS),
+  },
+  {
+    id: 2, name: '지하 서고', sub: '책장 미로 · 해골 기사', style: 'cellar', time: 480,
+    fog: 0x0b0f18, ambient: 0.05,
+    map: withDoors([
+      TOP,
+      HALL('L...BBBB.............BBBB.......L.'),
+      HALL('.f.........k.................i....'),
+      HALL('..................................'),
+      HALL('...H.......................H......'),
+      WALLS,
+      R('BB..BB..BB.', 'B..B..B..B', '.BB..BB..BB'),
+      R('...x.......', '..........', '...........'),
+      R('...........', '..........', 'i.........f'),
+      R('BB..BB..BB.', '..........', '...........'),
+      R('f.........i', 'B..B..B..B', '.BB..BB..BB'),
+      R('...........', '..f....f..', '...........'),
+      R('...........', '..........', '...H...k...'),
+      R('BB..BB..BB.', 'B..B..B..B', '.BB..BB..BB'),
+      R('..c..H.....', '..........', '....f....c.'),
+      WALLS,
+      R('...........', '..........', '...........'),
+      R('.T.........', '.L......L.', '....T...T..'),
+      R('...........', '..........', '...........'),
+      R('b.......f..', '....P.....', 'f.......b..'),
+      R('..H........', '..........', '......H....'),
+      R('...........', '..........', '...........'),
+      R('BBB...BBB..', '..........', '.....X.....'),
+      R('L...i....c.', 'c........c', 'b...i.....L'),
+      BOTTOM,
+    ], DOORS),
+  },
+  {
+    id: 3, name: '묘지 정원', sub: '안개 낀 묘지 · 까마귀 박사', style: 'garden', time: 480,
+    fog: 0x0c1612, ambient: 0.06,
+    map: withDoors([
+      TOP,
+      HALL('t..g...g...g.....d.....g...g...t..'),
+      HALL('.............i.......f............'),
+      HALL('..g.......w..............g........'),
+      HALL('..................................'),
+      WALLS,
+      R('t.........t', '..g....g..', 't.........t'),
+      R('...g...g...', '..........', '...g...g...'),
+      R('...........', '..........', '....s......'),
+      R('f..r.......', '...v......', '.........f.'),
+      R('...g...g...', '..........', '...g...g...'),
+      R('.....H.....', '.g......g.', '...H.......'),
+      R('t.........i', 'f...w.....', 'i.........t'),
+      R('...........', '..........', '...........'),
+      R('...g...g..c', '..t....t..', '..c.g...g..'),
+      WALLS,
+      R('t..........', '..........', '..........t'),
+      R('..s....g...', '.L......L.', '...g....s..'),
+      R('...........', '..........', '...........'),
+      R('.g...f.....', '....P.....', '...f....g..'),
+      R('...H.......', '..........', '.....H.....'),
+      R('...........', '..........', '...........'),
+      R('..g...g....', '..........', '..X.....i..'),
+      R('L...i....c.', 'c........c', '...i.....L.'),
+      BOTTOM,
+    ], DOORS),
+  },
+];
+
+export const SOLID = new Set(['#', 'E', 'H', 'X', 'L', 'B', 'Q', 'T', 'h', 'R', 'b', 'c', 'o', 'g', 't', 's', 'w']);
+
+// 속도 단위: 칸/초. 학생 기본 속도 3.4.
+// 초등학생이 태블릿 조이스틱으로 피할 수 있게(2026-10-27 점검): 쫓는 속도는 학생보다 느리고, 오래 쫓아도 학생 속도를 넘지 않는다.
+export const PLAYER_SPEED = 3.4;
+export const MONSTERS = {
+  r: { kind: 'reaper', name: '저승사자', model: 'reaper', h: 2.1, walk: 1.4, run: 2.8, accel: 0.02, sight: 6, fov: 1.3, hear: 1.8, float: 0.12, catches: true },
+  d: { kind: 'plague', name: '까마귀 박사', model: 'plague', h: 1.95, walk: 1.3, run: 2.7, accel: 0.02, sight: 7, fov: 1.05, hear: 1.6, float: 0, catches: true },
+  k: { kind: 'knight', name: '해골 기사', model: 'knight', h: 2.0, walk: 1.2, run: 2.3, accel: 0.015, sight: 5.5, fov: 1.7, hear: 1.3, float: 0, catches: true, shout: true },
+  v: { kind: 'bat', name: '박쥐 악마', model: 'bat', h: 1.3, walk: 1.6, run: 2.4, accel: 0, sight: 4.5, fov: 6.3, hear: 0, float: 1.3, catches: false, flies: true, shout: true },
+  x: { kind: 'spider', name: '거미', model: 'spider', h: 0.9, walk: 1.2, run: 4.0, accel: 0, sight: 3.8, fov: 2.2, hear: 1.0, float: 0, catches: true, lunge: true },
+};
+
+export const ITEMS = {
+  time: { name: '모래시계', model: 'hourglass', desc: '시간 +30초' },
+  crystal: { name: '수정구', model: 'crystal', desc: '가까운 괴물 6초 동안 눈멂' },
+  potion: { name: '날쌘 물약', model: 'potion', desc: '5초 동안 빨라짐' },
+};
+
+// 분장한 아이들(뼈대·동작 모델 kid). 모델이 없으면 예전 정지 모델(model)로 대신한다
+export const CHARACTERS = [
+  { kid: 'witch_sd', model: 'girl', costume: '마녀', color: '#b07cff', face: 'assets/faces/witch.jpg' },
+  { kid: 'vampire_sd', model: 'boy', costume: '흡혈귀', color: '#ff5a6b', face: 'assets/faces/vampire.jpg' },
+  { kid: 'pumpkin_sd', model: 'redhood', costume: '호박', color: '#ff9a3a', face: 'assets/faces/pumpkin.jpg' },
+  { kid: 'mummy_sd', model: 'tealgirl', costume: '미라', color: '#7fe0c8', face: 'assets/faces/mummy.jpg' },
+];
+
+// 괴물 세기: 'auto'는 학년에 맞춘다(1~4학년 느림, 5~6학년 보통)
+export const DIFF_SPEED = { easy: 0.85, normal: 0.95, hard: 1.08 };
+export const diffForGrade = (grade, setting) => setting && setting !== 'auto' ? setting : (grade <= 4 ? 'easy' : 'normal');
+
+export const EDGE_COLORS = ['#e8573c', '#3cb4e8', '#8fd14f', '#c47be8', '#f2c230'];
+export const CANDY_PER_FLOOR = 12;
+
+// 괴물 자리: 느림(1~4학년 기본)에서는 거미를 빼서 길목을 막지 않게 한다(아이 플레이 점검 2026-10-27)
+export const monsterSpots = (spots, diff) => spots.mon.filter(s => !(diff === 'easy' && s.ch === 'x'));
+
+// 쪽지 찾기: 층마다 가구 10곳을 뒤질 수 있고, 그중 4곳에 진짜 쪽지가 있다(나머지는 꽝, 작은 보상)
+export const SEARCH_SPOTS = 10;
+export const SEARCH_LOCK = 6;    // 가구 문제를 틀리면 그 가구가 잠기는 시간(초). 다시 오면 다른 문제가 나온다
+export const CHEST_N = 5;         // 층마다 호박 상자 문제 수(나머지 묶음은 가구 문제)
+export const SEARCHABLE = {
+  B: ['📚', '책장'], Q: ['🍽️', '식탁'], T: ['🧰', '작업대'], b: ['🛢️', '나무통'], R: ['👑', '왕좌'], o: ['🦉', '부엉이상'], h: ['🪑', '의자'],
+  g: ['🪦', '묘비'], t: ['🌳', '나무'], s: ['🎃', '허수아비'], w: ['🪣', '우물'],
+};
+export const SEARCH_CODES = Object.keys(SEARCHABLE);
+
+// 루미의 방 힌트용 이름. 지도는 위 복도(1~4줄) · 가운데 방 셋(6~14줄) · 아래 방 셋(16~23줄), 세로 벽은 12·23칸
+const ROOM_NAMES = [
+  { top: '위층 복도', mid: ['도서관', '부엉이 홀', '식당'], bot: ['작업실', '현관', '창고'] },
+  { top: '지하 복도', mid: ['서쪽 서고', '가운데 서고', '동쪽 서고'], bot: ['책 수리실', '지하 입구', '기록 보관실'] },
+  { top: '북쪽 묘지', mid: ['서쪽 정원', '우물가', '동쪽 정원'], bot: ['허수아비 밭', '정원 입구', '동쪽 묘비길'] },
+];
+export function roomName(stageIdx, c, r) {
+  const R = ROOM_NAMES[stageIdx] || ROOM_NAMES[0];
+  if (r <= 4) return R.top;
+  const k = c <= 12 ? 0 : c <= 23 ? 1 : 2;
+  return (r <= 14 ? R.mid : R.bot)[k];
+}

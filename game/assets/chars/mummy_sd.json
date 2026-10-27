@@ -1,0 +1,25 @@
+{
+  "anims": {
+    "idle": {
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "walk": {
+      "frames": 12,
+      "fps": 14,
+      "loop": true
+    },
+    "run": {
+      "frames": 10,
+      "fps": 18,
+      "loop": true
+    },
+    "hit": {
+      "frames": 3,
+      "fps": 12,
+      "loop": false
+    }
+  },
+  "height": 1.0
+}

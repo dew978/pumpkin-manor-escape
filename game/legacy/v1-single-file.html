@@ -1,0 +1,1340 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>호박 저택 탈출</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=East+Sea+Dokdo&family=Gowun+Dodum&display=swap">
+<style>
+/* 레이아웃: 화면 전체가 게임판. HUD는 위·아래 띠, 대화창은 가운데 양피지 한 장 */
+:root {
+  --night: #120d1a;      /* 바탕 */
+  --plum: #241a33;       /* 패널 */
+  --plum-2: #33264a;     /* 패널 강조 */
+  --parchment: #efe3c8;  /* 글자 */
+  --dim: #b4a6c4;        /* 보조 글자 */
+  --pumpkin: #f08a24;    /* 강조 */
+  --candle: #ffd27a;     /* 안전지대 */
+  --mint: #8fe0c9;       /* 정답 */
+  --blood: #e2556b;      /* 경고 */
+  --ink: #1b1210;        /* 양피지 위 글자 */
+  --paper: #eedfbf;      /* 양피지 */
+  --paper-2: #e2cfa6;
+  --f-display: "East Sea Dokdo", "Gowun Dodum", cursive;
+  --f-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --f-num: "Do Hyeon", "Gowun Dodum", "Malgun Gothic", sans-serif;
+  --f-emoji: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--night); color: var(--parchment); font-family: var(--f-body); overflow: hidden; touch-action: none; }
+#app { position: fixed; inset: 0; }
+#app > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#dark { pointer-events: none; }
+#flash { position: absolute; inset: 0; pointer-events: none; background: var(--candle); opacity: 0; transition: opacity .6s; }
+
+button { font-family: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--candle); outline-offset: 2px; }
+
+/* HUD */
+#hud { position: absolute; top: 0; left: 0; right: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 12px;
+  padding-top: max(10px, env(safe-area-inset-top, 0px)); padding-bottom: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: linear-gradient(var(--night), transparent); pointer-events: none; }
+.room-name { font-family: var(--f-display); font-size: 34px; line-height: 1; color: var(--pumpkin); }
+.room-sub { font-size: 13px; color: var(--dim); margin-top: 2px; }
+#timer { font-family: var(--f-num); font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; text-align: center; letter-spacing: .02em; }
+#timer.low { color: var(--blood); animation: pulse 1s infinite; }
+#timer small { display: block; font-family: var(--f-body); font-size: 12px; color: var(--dim); letter-spacing: 0; }
+@keyframes pulse { 50% { opacity: .55; } }
+.hud-right { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+#pieces { display: flex; gap: 6px; }
+.pc { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-family: var(--f-emoji); font-size: 22px;
+  background: var(--plum); border: 2px solid var(--plum-2); position: relative; filter: grayscale(1) brightness(.5); }
+.pc.got { filter: none; border-color: var(--pumpkin); }
+.pc.solved { filter: none; border-color: var(--mint); }
+.pc b { position: absolute; right: -6px; bottom: -6px; font-family: var(--f-num); font-size: 15px; font-weight: 400; background: var(--mint); color: var(--ink);
+  border-radius: 8px; min-width: 20px; height: 20px; display: grid; place-items: center; }
+#order { font-size: 13px; color: var(--dim); }
+#order .sym { font-family: var(--f-emoji); font-size: 17px; letter-spacing: 2px; color: var(--parchment); }
+
+#bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)); padding-top: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  pointer-events: none; }
+#bottom > * { pointer-events: auto; }
+.pocket { display: flex; gap: 8px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: var(--plum); border: 2px solid var(--plum-2); font-size: 15px; }
+.chip .e { font-family: var(--f-emoji); font-size: 18px; }
+.chip.btn:hover:not(:disabled) { border-color: var(--pumpkin); }
+.chip:disabled { opacity: .45; cursor: default; }
+.chip kbd { font-family: var(--f-num); font-size: 12px; color: var(--dim); border: 1px solid var(--plum-2); border-radius: 4px; padding: 0 4px; }
+#interact { font-family: var(--f-num); font-size: 22px; padding: 12px 24px; border-radius: 14px; background: var(--candle); color: var(--ink); border: 0;
+  box-shadow: 0 0 0 4px rgba(255, 210, 122, .25), 0 0 30px rgba(255, 210, 122, .45); animation: bob 1.6s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-4px); } }
+
+#toast { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); text-align: center;
+  background: rgba(36, 26, 51, .92); border: 2px solid var(--plum-2); border-radius: 14px; padding: 10px 18px; font-size: 16px; line-height: 1.5;
+  pointer-events: none; opacity: 0; transition: opacity .3s; }
+#toast.show { opacity: 1; }
+
+/* 화면과 대화창 */
+.screen, .modal { position: absolute; inset: 0; display: grid; place-items: center; overflow-y: auto;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.modal { background: rgba(10, 6, 16, .62); }
+#title { background: radial-gradient(ellipse at 50% 38%, rgba(240, 138, 36, .18), transparent 60%), rgba(12, 8, 18, .55); }
+.title-wrap { text-align: center; max-width: 560px; display: grid; gap: 18px; justify-items: center; }
+.logo { font-family: var(--f-display); font-size: clamp(64px, 16vw, 120px); line-height: .9; color: var(--pumpkin);
+  text-shadow: 0 0 24px rgba(240, 138, 36, .5), 0 4px 0 #6b2f05; text-wrap: balance; }
+.tagline { font-size: 17px; color: var(--parchment); line-height: 1.6; text-wrap: balance; }
+.opts { display: grid; gap: 10px; width: 100%; max-width: 380px; }
+.seg { display: grid; grid-template-columns: auto 1fr 1fr; align-items: center; gap: 6px; }
+.seg span { font-size: 14px; color: var(--dim); min-width: 52px; text-align: left; }
+.seg button { padding: 10px; border-radius: 10px; background: var(--plum); border: 2px solid var(--plum-2); font-size: 16px; }
+.seg button[aria-pressed="true"] { border-color: var(--pumpkin); background: var(--plum-2); }
+.big { font-family: var(--f-num); font-size: 26px; padding: 14px 44px; border-radius: 16px; border: 0; background: var(--pumpkin); color: var(--ink);
+  box-shadow: 0 5px 0 #8a3f06; }
+.big:active { transform: translateY(3px); box-shadow: 0 2px 0 #8a3f06; }
+.link { background: none; border: 0; color: var(--dim); text-decoration: underline; font-size: 14px; }
+.keys { font-size: 13px; color: var(--dim); line-height: 1.7; }
+.keys kbd { font-family: var(--f-num); color: var(--parchment); border: 1px solid var(--plum-2); border-radius: 4px; padding: 0 5px; }
+
+.sheet { width: min(620px, 100%); background: var(--paper); color: var(--ink); border-radius: 6px; padding: 26px 26px 22px;
+  box-shadow: 0 0 0 6px #3b2a1c, 0 20px 60px rgba(0, 0, 0, .6); position: relative;
+  background-image: repeating-linear-gradient(0deg, transparent 0 31px, rgba(120, 80, 30, .08) 31px 32px); }
+.sheet h2 { font-family: var(--f-display); font-size: 44px; line-height: 1; font-weight: 400; margin: 0 0 6px; color: #7a2e06; text-wrap: balance; }
+.sheet p { line-height: 1.7; margin: 0 0 12px; font-size: 17px; }
+.sheet .lead { color: #5b4632; font-size: 15px; }
+.sheet .story { font-size: 19px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 16px; }
+.btn-ink { font-family: var(--f-num); font-size: 19px; padding: 10px 20px; border-radius: 10px; border: 2px solid var(--ink); background: var(--ink); color: var(--paper); }
+.btn-ink.ghost { background: transparent; color: var(--ink); }
+.btn-ink:disabled { opacity: .35; cursor: default; }
+.orderbox { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border: 2px dashed #8a6a44; border-radius: 10px; margin: 8px 0 14px; font-size: 15px; }
+.orderbox .sym { font-family: var(--f-emoji); font-size: 28px; letter-spacing: 6px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.card { display: grid; justify-items: center; gap: 4px; padding: 12px 8px; border-radius: 10px; border: 2px solid #8a6a44; background: var(--paper-2); font-size: 15px; color: var(--ink); }
+.card .e { font-family: var(--f-emoji); font-size: 34px; line-height: 1.1; }
+.card.missing { opacity: .45; cursor: default; }
+.card.solved { border-color: #2f8f74; background: #d7ead9; }
+.card.solved strong { font-family: var(--f-num); font-size: 26px; font-weight: 400; }
+.qtext { font-size: 22px; line-height: 1.6; margin: 6px 0 14px; text-wrap: pretty; }
+.answer { display: flex; align-items: center; gap: 14px; justify-content: center; margin: 4px 0 12px; }
+.slot { width: 58px; height: 66px; border-radius: 10px; border: 3px solid var(--ink); display: grid; place-items: center; font-family: var(--f-num); font-size: 38px; background: #fff7e6; }
+.slot-col { display: grid; justify-items: center; gap: 4px; }
+.slot-col .e { font-family: var(--f-emoji); font-size: 26px; }
+.shake { animation: shake .4s; }
+@keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+.pad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; max-width: 420px; margin: 0 auto; }
+.pad button { font-family: var(--f-num); font-size: 26px; padding: 10px 0; border-radius: 10px; border: 2px solid var(--ink); background: #fff7e6; color: var(--ink); }
+.pad button:active { background: var(--paper-2); }
+.hint { background: #fbeec8; border-left: 5px solid var(--pumpkin); padding: 8px 12px; border-radius: 4px; font-size: 16px; margin-top: 12px; }
+.mapping { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; font-size: 18px; margin-bottom: 10px; }
+.mapping span { font-family: var(--f-num); }
+.mapping .e { font-family: var(--f-emoji); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 10px 0 6px; }
+.stat { border: 2px solid #8a6a44; border-radius: 10px; padding: 10px; text-align: center; }
+.stat b { display: block; font-family: var(--f-num); font-size: 30px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: #5b4632; }
+textarea#qjson { width: 100%; min-height: 300px; font: 13px/1.5 ui-monospace, Consolas, monospace; border: 2px solid var(--ink); border-radius: 8px; padding: 10px; background: #fff7e6; color: var(--ink); resize: vertical; }
+.err { color: #a3132b; font-size: 14px; margin-top: 8px; min-height: 1em; }
+.ctl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 15px; margin: 10px 0; }
+.ctl kbd { font-family: var(--f-num); border: 1px solid var(--ink); border-radius: 4px; padding: 0 5px; }
+
+@media (max-width: 560px) {
+  #hud { grid-template-columns: 1fr auto; }
+  #hud .hud-left { grid-column: 1 / -1; }
+  .room-name { font-size: 28px; }
+  #timer { font-size: 32px; text-align: left; }
+  .pc { width: 34px; height: 34px; font-size: 18px; }
+  #toast { top: 128px; }
+  .sheet { padding: 20px 16px 16px; }
+  .sheet h2 { font-size: 36px; }
+  .qtext { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #interact, #timer.low { animation: none; }
+  .shake { animation: none; }
+}
+</style>
+
+<div id="app">
+  <canvas id="dark"></canvas>
+  <div id="flash"></div>
+
+  <header id="hud" hidden>
+    <div class="hud-left">
+      <div class="room-name" id="roomName">현관</div>
+      <div class="room-sub" id="roomSub"></div>
+    </div>
+    <div id="timer">0:00<small>자정까지</small></div>
+    <div class="hud-right">
+      <div id="pieces"></div>
+      <div id="order"></div>
+    </div>
+  </header>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <div id="bottom" hidden>
+    <div class="pocket">
+      <button class="chip btn" id="useBell" title="박쥐 방울 쓰기"><span class="e">🔔</span><span id="bellN">0</span> <kbd>Q</kbd></button>
+      <span class="chip"><span class="e">🍬</span><span id="candyN">0</span></span>
+      <button class="chip btn" id="pauseBtn" title="잠깐 멈춤"><span class="e">⏸️</span></button>
+      <button class="chip btn" id="muteBtn" title="소리 켜고 끄기"><span class="e" id="muteIcon">🔊</span></button>
+    </div>
+    <button id="interact" hidden>🕯️ 자물쇠 풀기 <small>(E)</small></button>
+  </div>
+
+  <section class="screen" id="title">
+    <div class="title-wrap">
+      <div class="logo">호박 저택<br>탈출</div>
+      <p class="tagline">이름을 잃은 꼬마 유령 루미를 도와 주세요.<br>괴물을 피해 문제 조각을 모으고, 자물쇠를 풀어 저택을 빠져나가요.</p>
+      <div class="opts">
+        <div class="seg" id="segMode"><span>인원</span><button data-v="1" aria-pressed="false">혼자</button><button data-v="2" aria-pressed="true">둘이 협동</button></div>
+        <div class="seg" id="segDiff"><span>괴물</span><button data-v="easy" aria-pressed="true">느릿느릿</button><button data-v="normal" aria-pressed="false">보통</button></div>
+      </div>
+      <button class="big" id="startBtn">들어가기</button>
+      <p class="keys" id="keysHint"><kbd>W A S D</kbd> 1P · <kbd>방향키</kbd> 2P · 혼자일 땐 바닥을 눌러도 움직여요</p>
+      <button class="link" id="editBtn">선생님: 문제 바꾸기</button>
+    </div>
+  </section>
+
+  <div class="modal" id="modal" hidden><div class="sheet" id="sheet"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+/* =========================================================
+   선생님 설정: 문제 은행
+   - 방마다 한 묶음. 답(a)은 0~9 한 자리 숫자여야 자물쇠 번호가 됩니다.
+   - 방에 놓인 조각 수(현관 2, 도서관 4, 정원 4)만큼 앞에서부터 씁니다.
+   - 게임 시작 화면의 "선생님: 문제 바꾸기"에서도 고칠 수 있어요.
+   ========================================================= */
+const DEFAULT_QBANK = [
+  [
+    { q: "호박 3개에 사탕을 2개씩 넣었어요. 사탕은 모두 몇 개일까요?", a: 6, hint: "3 × 2 를 계산해 보세요." },
+    { q: "거미의 다리는 몇 개일까요?", a: 8, hint: "곤충(다리 6개)보다 2개 더 많아요." },
+    { q: "박쥐 10마리 중 3마리가 날아갔어요. 남은 박쥐는?", a: 7, hint: "10 − 3" },
+    { q: "주사위에서 1의 맞은편 눈은 몇일까요?", a: 6, hint: "맞은편 두 눈을 더하면 7이에요." }
+  ],
+  [
+    { q: "72 ÷ 9 = □", a: 8, hint: "9단에서 72가 나오는 곳을 찾아보세요." },
+    { q: "책 35권 중 몇 권을 빌려 가서 28권이 남았어요. 빌려 간 책은 몇 권?", a: 7, hint: "35 − 28" },
+    { q: "0.5 + 0.4 = 0.□", a: 9, hint: "0.1이 몇 개인지 세어 보세요. 5개 + 4개" },
+    { q: "정육면체의 면은 모두 몇 개일까요?", a: 6, hint: "주사위를 떠올려 보세요." },
+    { q: "1시간의 1/4은 1□분이에요.", a: 5, hint: "60 ÷ 4 = 15" }
+  ],
+  [
+    { q: "삼각형의 꼭짓점 수 + 사각형의 꼭짓점 수 = □", a: 7, hint: "3 + 4" },
+    { q: "36 = 4 × □", a: 9, hint: "4단에서 36을 찾아보세요." },
+    { q: "3/6 을 약분하면 1/□ 이에요.", a: 2, hint: "분모와 분자를 3으로 나눠 보세요." },
+    { q: "1보다 크고 10보다 작은 수 중, 45의 약수인 가장 작은 수는?", a: 3, hint: "45를 2, 3, 4… 로 차례로 나눠 보세요." },
+    { q: "일주일은 □일이에요.", a: 7, hint: "월화수목금토일" }
+  ]
+];
+
+const SYMBOLS = [
+  { e: "🎃", name: "호박", color: 0xf08a24 },
+  { e: "👻", name: "유령", color: 0xdfe8ff },
+  { e: "🦇", name: "박쥐", color: 0xa77bff },
+  { e: "🕷️", name: "거미", color: 0x7fdc8a }
+];
+
+/* 맵 기호
+   # 벽  B 책장  G 무덤  W 나무  J 호박등  x 상자   D 문
+   S 촛불 원(안전지대)  P 시작 위치   1~4 문제 조각   O 순서 표지판
+   T 모래시계  C 박쥐 방울  c 사탕   k 해골  p 호박귀신  g 유령          */
+const ROOMS = [
+  {
+    name: "현관", sub: "튜토리얼 · 조각 2개", time: 150, floor: "wood", dark: 0.78, light: 4.6,
+    wall: 0x4a3550, ambient: 0x7a6890,
+    map: [
+      "#######D########",
+      "#.....SSS......#",
+      "#.....SPS....c.#",
+      "#.J...SSS......#",
+      "#..............#",
+      "#..####...##...#",
+      "#..#1.....#2...#",
+      "#..#..p...#....#",
+      "#.T....C.......#",
+      "#c....O.....J..#",
+      "################"
+    ],
+    diary: "일기장 1쪽 — 오늘은 할로윈. 친구들이랑 호박등을 만들기로 했다. 그런데… 친구들 이름이 하나도 생각나지 않는다."
+  },
+  {
+    name: "도서관", sub: "어둠 속 책장 미로 · 조각 4개", time: 210, floor: "carpet", dark: 0.9, light: 3.8,
+    wall: 0x3a2a3a, ambient: 0x5f5478,
+    map: [
+      "#########D##########",
+      "#.c.....SSS......c.#",
+      "#.......SPS........#",
+      "#.BBBB..SSS..BBBB..#",
+      "#..................#",
+      "#.BBBB.BB..BB.BBBB.#",
+      "#1.....k......T...2#",
+      "#.BBBB.BB..BB.BBBB.#",
+      "#.........O........#",
+      "#.BBBB.BBBBBB.BBBB.#",
+      "#....C......k......#",
+      "#.BB...J..BB...J.B.#",
+      "#3.......c.......4.#",
+      "####################"
+    ],
+    diary: "일기장 2쪽 — 도서관에서 책을 읽어 주던 할머니가 있었다. \"모르는 건 부끄러운 게 아니야. 물어보면 돼.\" 할머니 목소리가 들리는 것 같다."
+  },
+  {
+    name: "정원", sub: "무덤 사이 숨바꼭질 · 조각 4개", time: 240, floor: "grass", dark: 0.82, light: 4.4,
+    wall: 0x2f3a33, ambient: 0x60708a,
+    map: [
+      "##########D###########",
+      "#..c.....SSS.......c.#",
+      "#.W......SPS....W....#",
+      "#........SSS.........#",
+      "#..G.G.........G.G...#",
+      "#1.......W..W.......2#",
+      "#...WW....p.....WW...#",
+      "#..T....G...G....C...#",
+      "#....g.....O.....p...#",
+      "#.W....GG.....GG...W.#",
+      "#...C.............T..#",
+      "#..G...W..J..W....G..#",
+      "#3...c.....c.......4.#",
+      "#.....W.........W....#",
+      "######################"
+    ],
+    diary: "일기장 3쪽 — 기억났다! 내 이름은 루미. 할로윈 밤마다 친구들이 나를 찾으러 와 줬다. 바로 너희처럼."
+  }
+];
+
+const PROLOGUE = "할로윈 밤, 낡은 호박 저택에 들어서자 꼬마 유령이 나타났다. \"난… 내 이름이 기억나지 않아. 자정 종이 울리기 전에 이 집을 나가야 해. 도와줄래?\"";
+const ENDING = "문이 활짝 열리고 달빛이 쏟아졌다. 루미가 환하게 웃었다. \"고마워, 친구들. 내년 할로윈에 또 만나!\"";
+
+const MONSTER = {
+  skeleton: { walk: 1.4, run: 2.5, sight: 5, needLOS: true },
+  pumpkin: { walk: 1.2, run: 2.2, sight: 4.5, needLOS: false },
+  ghost: { walk: 0.9, run: 0.9, sight: 99, needLOS: false }
+};
+const PLAYER_SPEED = 3.2;
+const SOLID = new Set(["#", "B", "G", "W", "J", "x", "D"]);
+
+/* ---------- 저장소 (없어도 동작) ---------- */
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { } }
+};
+function loadQBank() {
+  const raw = store.get("pumpkin-qbank");
+  if (raw) { try { const q = JSON.parse(raw); if (validateQBank(q) === "") return q; } catch (e) { } }
+  return JSON.parse(JSON.stringify(DEFAULT_QBANK));
+}
+function pieceCount(room) { return room.map.join("").replace(/[^1-4]/g, "").length; }
+function validateQBank(q) {
+  if (!Array.isArray(q) || q.length < ROOMS.length) return `방 ${ROOMS.length}개만큼 묶음이 필요해요.`;
+  for (let i = 0; i < ROOMS.length; i++) {
+    const need = pieceCount(ROOMS[i]);
+    if (!Array.isArray(q[i]) || q[i].length < need) return `${ROOMS[i].name}: 문제가 ${need}개 이상 필요해요.`;
+    for (const it of q[i]) {
+      if (!it || typeof it.q !== "string" || !it.q.trim()) return `${ROOMS[i].name}: 문제 글(q)이 비어 있어요.`;
+      if (!Number.isInteger(it.a) || it.a < 0 || it.a > 9) return `${ROOMS[i].name}: 답(a)은 0~9 숫자여야 해요. (${JSON.stringify(it.a)})`;
+    }
+  }
+  return "";
+}
+let QBANK = loadQBank();
+
+/* ---------- 소리 ---------- */
+const Sound = {
+  ctx: null, master: null, buffers: {}, els: {}, muted: store.get("pumpkin-mute") === "1", ambOn: false,
+  names: ["pickup", "door_open", "bell", "spotted", "caught", "ambience"],
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.muted ? 0 : 1;
+    this.master.connect(this.ctx.destination);
+    for (const n of this.names) {
+      fetch(`audio/${n}.mp3`).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then(b => this.ctx.decodeAudioData(b)).then(buf => { this.buffers[n] = buf; if (n === "ambience" && this.ambOn) this.startAmb(); })
+        .catch(() => { const a = new Audio(`audio/${n}.mp3`); a.preload = "auto"; this.els[n] = a; });
+    }
+  },
+  play(n, vol = 1, rate = 1) {
+    if (!this.ctx || this.muted) return;
+    if (this.ctx.state === "suspended") this.ctx.resume();
+    const buf = this.buffers[n];
+    if (buf) {
+      const s = this.ctx.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate;
+      const g = this.ctx.createGain(); g.gain.value = vol; s.connect(g).connect(this.master); s.start();
+    } else if (this.els[n]) {
+      const a = this.els[n].cloneNode(); a.volume = Math.min(1, vol); a.play().catch(() => { });
+    }
+  },
+  startAmb() {
+    this.ambOn = true;
+    const buf = this.buffers.ambience;
+    if (!this.ctx || !buf || this._ambTimer) return;
+    // 파일 앞뒤에 페이드가 있어 0.6초씩 겹쳐 틀면 이음새가 들리지 않는다
+    let next = this.ctx.currentTime + 0.05;
+    const step = buf.duration - 0.6;
+    const schedule = () => {
+      while (next < this.ctx.currentTime + 1.5) {
+        const s = this.ctx.createBufferSource(); s.buffer = buf;
+        const g = this.ctx.createGain(); g.gain.value = 0.55; s.connect(g).connect(this.master); s.start(next);
+        next += step;
+      }
+      this._ambTimer = setTimeout(schedule, 500);
+    };
+    schedule();
+  },
+  tone(freqs, { type = "sine", dur = 0.14, gap = 0.1, vol = 0.18 } = {}) {
+    if (!this.ctx || this.muted) return;
+    const t0 = this.ctx.currentTime;
+    freqs.forEach((f, i) => {
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = type; o.frequency.value = f;
+      const t = t0 + i * gap;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.02);
+    });
+  },
+  correct() { this.tone([660, 880, 1175], { gap: 0.09, dur: 0.22 }); },
+  wrong() { this.tone([180, 150], { type: "square", gap: 0.12, dur: 0.16, vol: 0.08 }); },
+  fanfare() { this.tone([523, 659, 784, 1047, 784, 1047], { type: "triangle", gap: 0.11, dur: 0.3, vol: 0.16 }); },
+  heart() { this.tone([62, 55], { type: "sine", gap: 0.16, dur: 0.18, vol: 0.35 }); },
+  setMuted(m) {
+    this.muted = m; store.set("pumpkin-mute", m ? "1" : "0");
+    if (this.master) this.master.gain.value = m ? 0 : 1;
+  }
+};
+
+/* ---------- Three.js 기본 ---------- */
+const app = document.getElementById("app");
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setClearColor(0x0a0710);
+app.insertBefore(renderer.domElement, app.firstChild);
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+const CAM_OFFSET = new THREE.Vector3(7, 12, 7);
+const ELEV_SIN = Math.sin(Math.atan2(CAM_OFFSET.y, Math.hypot(CAM_OFFSET.x, CAM_OFFSET.z)));
+let viewSize = 11;
+const camTarget = new THREE.Vector3();
+
+const ambient = new THREE.AmbientLight(0x7a6890, 0.6);
+const hemi = new THREE.HemisphereLight(0x9a88c0, 0x1a1020, 0.35);
+scene.add(ambient, hemi);
+const playerLights = [0, 1].map(() => { const l = new THREE.PointLight(0xffc27a, 1.1, 7, 1.6); scene.add(l); return l; });
+const altarLight = new THREE.PointLight(0xffc860, 1.2, 6, 1.5); scene.add(altarLight);
+const decorLights = [0, 1].map(() => { const l = new THREE.PointLight(0xff7a1a, 0.9, 5, 1.6); scene.add(l); return l; });
+
+const lam = (color, extra = {}) => new THREE.MeshLambertMaterial(Object.assign({ color }, extra));
+
+function canvasTex(w, h, draw) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 2; return t;
+}
+function textSprite(text, { size = 80, font = "var", color = "#fff", w = 128, h = 128, scale = 0.7, bg = null, top = false } = {}) {
+  const tex = canvasTex(w, h, (ctx) => {
+    if (bg) { ctx.fillStyle = bg; roundRect(ctx, 4, 4, w - 8, h - 8, 18); ctx.fill(); }
+    ctx.font = `${size}px ${font === "var" ? '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Do Hyeon",sans-serif' : font}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = color;
+    ctx.fillText(text, w / 2, h / 2 + size * 0.06);
+  });
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: !top, depthWrite: false }));
+  sp.scale.set(scale * w / h, scale, 1);
+  if (top) sp.renderOrder = 10;
+  return sp;
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+/* ---------- 게임 상태 ---------- */
+const G = {
+  mode: "title", players: 2, diff: "easy", roomIdx: 0, room: null, time: 0,
+  grid: [], cols: 0, rows: 0, spawn: null, safeCenter: null, door: null,
+  pieces: [], items: [], monsters: [], sign: null, lanterns: [],
+  answers: [], order: [], confuseT: 0, bells: 0,
+  stats: { candy: 0, candyTotal: 0, midnights: 0, hints: 0, elapsed: 0, catches: 0 },
+  roomElapsed: 0, lastSpot: -10, heartT: 0, tut: {}, t: 0
+};
+let roomGroup = null;
+
+/* ---------- 격자 도우미 ---------- */
+const inBounds = (c, r) => r >= 0 && r < G.rows && c >= 0 && c < G.cols;
+const cellAt = (c, r) => inBounds(c, r) ? G.grid[r][c] : null;
+const isSolid = (c, r) => { const k = cellAt(c, r); return !k || k.solid; };
+const isSafe = (c, r) => { const k = cellAt(c, r); return !!k && k.safe; };
+const tileOf = (x, z) => ({ c: Math.round(x), r: Math.round(z) });
+const monsterPass = (c, r) => !isSolid(c, r) && !isSafe(c, r);
+const playerPass = (c, r) => !isSolid(c, r);
+const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+
+function bfs(from, to, pass, maxLen = 400) {
+  if (from.c === to.c && from.r === to.r) return [];
+  if (!pass(to.c, to.r)) return null;
+  const key = (c, r) => r * G.cols + c;
+  const prev = new Map([[key(from.c, from.r), -1]]);
+  const q = [from]; let head = 0;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (head < q.length && head < maxLen) {
+    const cur = q[head++];
+    for (const [dc, dr] of dirs) {
+      const c = cur.c + dc, r = cur.r + dr, k = key(c, r);
+      if (prev.has(k) || !pass(c, r)) continue;
+      prev.set(k, key(cur.c, cur.r));
+      if (c === to.c && r === to.r) {
+        const path = []; let kk = k;
+        while (kk !== key(from.c, from.r)) { path.push({ c: kk % G.cols, r: Math.floor(kk / G.cols) }); kk = prev.get(kk); }
+        return path.reverse();
+      }
+      q.push({ c, r });
+    }
+  }
+  return null;
+}
+function lineOfSight(a, b) {
+  const d = dist2(a, b), n = Math.ceil(d / 0.25);
+  for (let i = 1; i < n; i++) {
+    const x = a.x + (b.x - a.x) * i / n, z = a.z + (b.z - a.z) * i / n;
+    const t = tileOf(x, z); if (isSolid(t.c, t.r)) return false;
+  }
+  return true;
+}
+function collides(x, z, rad, pass) {
+  const c0 = Math.floor(x - rad + 0.5), c1 = Math.floor(x + rad + 0.5), r0 = Math.floor(z - rad + 0.5), r1 = Math.floor(z + rad + 0.5);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    if (pass(c, r)) continue;
+    const nx = Math.max(c - 0.5, Math.min(x, c + 0.5)), nz = Math.max(r - 0.5, Math.min(z, r + 0.5));
+    if ((x - nx) ** 2 + (z - nz) ** 2 < rad * rad) return true;
+  }
+  return false;
+}
+function slideMove(ent, dx, dz, rad, pass) {
+  if (!collides(ent.x + dx, ent.z, rad, pass)) ent.x += dx;
+  if (!collides(ent.x, ent.z + dz, rad, pass)) ent.z += dz;
+}
+function followPath(ent, speed, dt) {
+  if (!ent.path || !ent.path.length) return false;
+  const n = ent.path[0], dx = n.c - ent.x, dz = n.r - ent.z, d = Math.hypot(dx, dz), step = speed * dt;
+  if (d <= step) { ent.x = n.c; ent.z = n.r; ent.path.shift(); }
+  else { ent.x += dx / d * step; ent.z += dz / d * step; }
+  ent.face = Math.atan2(dx, dz);
+  return true;
+}
+
+/* ---------- 모델 ---------- */
+function makePlayer(i) {
+  const g = new THREE.Group();
+  const cape = lam(i === 0 ? 0xe07a1c : 0x3fb39a);
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.72, 12), cape); body.position.y = 0.36;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), lam(0xf3d2b3)); head.position.y = 0.86;
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0x1b1210 });
+  [-0.07, 0.07].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), eyeM); e.position.set(x, 0.89, 0.18); g.add(e); });
+  g.add(body, head);
+  if (i === 0) { // 마녀 모자
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.03, 16), lam(0x3a2350)); brim.position.set(0, 1.05, -0.05); brim.rotation.x = -0.35;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 12), lam(0x3a2350)); cone.position.set(0, 1.26, -0.12); cone.rotation.x = -0.45;
+    g.add(brim, cone);
+  } else { // 고양이 귀 머리띠
+    [-0.12, 0.12].forEach(x => { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 4), lam(0x1d1a24)); ear.position.set(x, 1.06, 0); g.add(ear); });
+  }
+  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd27a }));
+  lantern.position.set(0.3, 0.5, 0.12); g.add(lantern);
+  const label = makeLabel(i); g.add(label);
+  const stars = textSprite("💫", { size: 90, scale: 0.55, top: true }); stars.position.y = 1.25; stars.visible = false; g.add(stars);
+  return { i, g, body, stars, label, x: 0, z: 0, face: 0, path: null, stunT: 0, invuln: 0, moving: false, bob: 0 };
+}
+function makeLabel(i) {
+  const label = textSprite(i === 0 ? "1P" : "2P", { size: 64, font: '"Do Hyeon",sans-serif', color: i === 0 ? "#f08a24" : "#8fe0c9", scale: 0.42, top: true });
+  label.position.y = 1.65; return label;
+}
+function makeMonster(type) {
+  const g = new THREE.Group();
+  if (type === "skeleton") {
+    const bone = lam(0xe8e2d0, { emissive: 0x222018 });
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), bone); skull.position.y = 1.0;
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.18), bone); jaw.position.set(0, 0.82, 0.04);
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), bone); spine.position.y = 0.55;
+    for (let k = 0; k < 3; k++) { const rib = new THREE.Mesh(new THREE.BoxGeometry(0.34 - k * 0.05, 0.04, 0.16), bone); rib.position.y = 0.7 - k * 0.11; g.add(rib); }
+    const legs = [-0.08, 0.08].map(x => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.06), bone); l.position.set(x, 0.16, 0); g.add(l); return l; });
+    const eyeM = new THREE.MeshBasicMaterial({ color: 0xff4a3a });
+    [-0.08, 0.08].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), eyeM); e.position.set(x, 1.02, 0.2); g.add(e); });
+    const book = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.06), lam(0x6a2f3a)); book.position.set(0.24, 0.62, 0.12); g.add(book);
+    g.add(skull, jaw, spine); g.userData.legs = legs;
+  } else if (type === "pumpkin") {
+    const face = canvasTex(128, 64, (c) => {
+      c.fillStyle = "#e0701a"; c.fillRect(0, 0, 128, 64);
+      c.fillStyle = "#ffe07a";
+      c.beginPath(); c.moveTo(44, 18); c.lineTo(56, 32); c.lineTo(36, 32); c.fill();
+      c.beginPath(); c.moveTo(84, 18); c.lineTo(92, 32); c.lineTo(72, 32); c.fill();
+      c.beginPath(); c.moveTo(36, 40); c.quadraticCurveTo(64, 58, 92, 40); c.lineTo(80, 46); c.lineTo(72, 40); c.lineTo(64, 48); c.lineTo(56, 40); c.lineTo(48, 46); c.closePath(); c.fill();
+    });
+    face.offset.x = 0.25;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 12), new THREE.MeshLambertMaterial({ map: face, emissive: 0x8a3a05, emissiveIntensity: 0.9 }));
+    ball.scale.y = 0.82; ball.position.y = 0.75; ball.rotation.y = -Math.PI / 2;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.16, 6), lam(0x3f5a22)); stem.position.y = 1.08;
+    const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.55, 10, 1, true), lam(0x2a1838, { side: THREE.DoubleSide })); cloak.position.y = 0.3;
+    g.add(ball, stem, cloak);
+  } else {
+    const sheet = new THREE.MeshLambertMaterial({ color: 0xe6f2ff, emissive: 0x335566, transparent: true, opacity: 0.72 });
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), sheet); head.position.y = 1.0;
+    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.7, 14, 1, true), sheet); skirt.position.y = 0.62; skirt.rotation.x = Math.PI;
+    const eyeM = new THREE.MeshBasicMaterial({ color: 0x1a1430 });
+    [-0.1, 0.1].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), eyeM); e.position.set(x, 1.04, 0.28); g.add(e); });
+    g.add(head, skirt);
+  }
+  const bang = textSprite("!", { size: 110, font: '"Do Hyeon",sans-serif', color: "#ffd27a", scale: 0.6, top: true }); bang.position.y = 1.6; bang.visible = false;
+  const huh = textSprite("?", { size: 110, font: '"Do Hyeon",sans-serif', color: "#b4a6c4", scale: 0.6, top: true }); huh.position.y = 1.6; huh.visible = false;
+  g.add(bang, huh);
+  const spec = MONSTER[type], k = G.diff === "easy" ? 0.75 : 1;
+  return { type, g, bang, huh, x: 0, z: 0, face: 0, path: [], state: "wander", alertT: 0, restT: 0, repathT: 0, lostT: 0, target: null, anim: Math.random() * 10,
+    walk: spec.walk * k, run: spec.run * k, sight: spec.sight - (G.diff === "easy" && type !== "ghost" ? 1 : 0), needLOS: spec.needLOS, home: null };
+}
+
+const players = [makePlayer(0), makePlayer(1)];
+players.forEach(p => scene.add(p.g));
+// 글꼴이 늦게 오면 이름표를 다시 그린다
+if (document.fonts) document.fonts.load('64px "Do Hyeon"').then(() => players.forEach(p => {
+  p.g.remove(p.label); p.label.material.map.dispose(); p.label.material.dispose(); p.label = makeLabel(p.i); p.g.add(p.label);
+}));
+
+function floorTexture(style, safeSet) {
+  const T = 32;
+  return canvasTex(G.cols * T, G.rows * T, (c, w, h) => {
+    for (let r = 0; r < G.rows; r++) for (let col = 0; col < G.cols; col++) {
+      const x = col * T, y = r * T, n = ((col * 73856093) ^ (r * 19349663)) & 255;
+      if (style === "wood") {
+        c.fillStyle = `rgb(${70 + (n % 14)},${48 + (n % 10)},${40 + (n % 8)})`; c.fillRect(x, y, T, T);
+        c.fillStyle = "rgba(0,0,0,.25)"; c.fillRect(x, y + (col % 2 ? 0 : 16), T, 1); c.fillRect(x, y, 1, T);
+      } else if (style === "carpet") {
+        c.fillStyle = (col + r) % 2 ? "#4a1f33" : "#40192d"; c.fillRect(x, y, T, T);
+        c.fillStyle = "rgba(220,170,90,.12)"; c.beginPath(); c.arc(x + 16, y + 16, 5, 0, 7); c.fill();
+      } else {
+        c.fillStyle = `rgb(${34 + (n % 10)},${58 + (n % 16)},${40 + (n % 8)})`; c.fillRect(x, y, T, T);
+        c.fillStyle = "rgba(160,200,120,.12)";
+        for (let k = 0; k < 4; k++) c.fillRect(x + ((n * (k + 3)) % 28), y + ((n * (k + 7)) % 28), 2, 4);
+      }
+      if (safeSet.has(r * G.cols + col)) { c.fillStyle = "rgba(255,200,110,.22)"; c.fillRect(x, y, T, T); }
+    }
+  });
+}
+const bookTex = canvasTex(64, 64, (c) => {
+  c.fillStyle = "#3a2216"; c.fillRect(0, 0, 64, 64);
+  const cols = ["#7a2e3a", "#2e4a7a", "#5a7a2e", "#7a5a2e", "#4a2e6a", "#8a6a3a"];
+  for (let s = 0; s < 3; s++) { let x = 3; while (x < 60) { const bw = 4 + ((x * 7 + s * 5) % 5); c.fillStyle = cols[(x + s * 3) % cols.length]; c.fillRect(x, 4 + s * 20, bw - 1, 16); x += bw; } c.fillStyle = "#24140c"; c.fillRect(0, 20 + s * 20, 64, 3); }
+});
+const doorTex = canvasTex(64, 96, (c) => {
+  c.fillStyle = "#4a2a1a"; c.fillRect(0, 0, 64, 96);
+  c.strokeStyle = "#2a160c"; c.lineWidth = 3; c.strokeRect(6, 6, 52, 40); c.strokeRect(6, 50, 52, 40);
+  c.fillStyle = "#d8a84a"; c.beginPath(); c.arc(50, 52, 4, 0, 7); c.fill();
+});
+const faceTex = canvasTex(64, 64, (c) => {
+  c.fillStyle = "#d8661a"; c.fillRect(0, 0, 64, 64); c.fillStyle = "#ffd27a";
+  c.beginPath(); c.moveTo(18, 22); c.lineTo(28, 32); c.lineTo(14, 32); c.fill();
+  c.beginPath(); c.moveTo(46, 22); c.lineTo(50, 32); c.lineTo(36, 32); c.fill();
+  c.fillRect(18, 40, 28, 6);
+});
+
+function disposeGroup(grp) {
+  grp.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    mats.forEach(m => { if (m.map && m.map !== bookTex && m.map !== doorTex && m.map !== faceTex) m.map.dispose(); m.dispose(); });
+  });
+}
+
+/* ---------- 방 불러오기 ---------- */
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+function loadRoom(idx) {
+  if (roomGroup) { scene.remove(roomGroup); disposeGroup(roomGroup); }
+  roomGroup = new THREE.Group(); scene.add(roomGroup);
+  const R = ROOMS[idx]; G.roomIdx = idx; G.room = R;
+  G.rows = R.map.length; G.cols = Math.max(...R.map.map(s => s.length));
+  G.grid = []; G.pieces = []; G.items = []; G.monsters = []; G.lanterns = []; G.sign = null; G.door = null;
+  const safeSet = new Set(), safeTiles = [], walls = [], shelves = [], graves = [], trees = [];
+  for (let r = 0; r < G.rows; r++) {
+    const row = [];
+    for (let c = 0; c < G.cols; c++) {
+      const ch = R.map[r][c] || "#";
+      const cell = { ch, solid: SOLID.has(ch), safe: ch === "S" || ch === "P" };
+      row.push(cell);
+      if (cell.safe) { safeSet.add(r * G.cols + c); safeTiles.push({ c, r }); }
+      if (ch === "P") G.spawn = { c, r };
+      if (ch === "#") walls.push({ c, r });
+      if (ch === "B") shelves.push({ c, r });
+      if (ch === "G") graves.push({ c, r });
+      if (ch === "W") trees.push({ c, r });
+      if (ch === "J") G.lanterns.push({ c, r });
+      if (ch === "D") G.door = { c, r };
+      if (ch === "O") G.sign = { c, r, found: false };
+      if (ch >= "1" && ch <= "4") G.pieces.push({ idx: +ch - 1, c, r, got: false, solved: false, wrong: 0, hinted: false });
+      if (ch === "T" || ch === "C" || ch === "c") G.items.push({ kind: ch === "T" ? "time" : ch === "C" ? "bell" : "candy", c, r, taken: false });
+      if (ch === "k" || ch === "p" || ch === "g") {
+        const m = makeMonster(ch === "k" ? "skeleton" : ch === "p" ? "pumpkin" : "ghost");
+        m.x = c; m.z = r; m.home = { c, r }; G.monsters.push(m); roomGroup.add(m.g);
+      }
+    }
+    G.grid.push(row);
+  }
+  G.pieces.sort((a, b) => a.idx - b.idx);
+  G.answers = G.pieces.map(p => QBANK[idx][p.idx].a);
+  G.order = shuffle(G.pieces.map(p => p.idx));
+  G.stats.candyTotal += G.items.filter(i => i.kind === "candy").length;
+
+  // 바닥
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(G.cols, G.rows), new THREE.MeshLambertMaterial({ map: floorTexture(R.floor, safeSet) }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set((G.cols - 1) / 2, 0, (G.rows - 1) / 2); roomGroup.add(floor);
+  G.floor = floor;
+
+  // 벽 (카메라 쪽 가장자리는 낮게 해서 안이 보이게)
+  const wallGeo = new THREE.BoxGeometry(1, 1, 1); wallGeo.translate(0, 0.5, 0);
+  const wallMesh = new THREE.InstancedMesh(wallGeo, lam(0xffffff), walls.length);
+  const m4 = new THREE.Matrix4(), col = new THREE.Color();
+  walls.forEach((w, i) => {
+    const near = w.r === G.rows - 1 || w.c === G.cols - 1;
+    const edge = w.r === 0 || w.c === 0 || near;
+    const hgt = near ? 0.25 : edge ? 1.5 : 1.1;
+    m4.makeScale(1, hgt, 1).setPosition(w.c, 0, w.r); wallMesh.setMatrixAt(i, m4);
+    col.setHex(R.wall).multiplyScalar(0.85 + ((w.c * 7 + w.r * 3) % 5) * 0.06); wallMesh.setColorAt(i, col);
+  });
+  roomGroup.add(wallMesh);
+
+  if (shelves.length) {
+    const sg = new THREE.BoxGeometry(0.96, 1.3, 0.96); sg.translate(0, 0.65, 0);
+    const sm = new THREE.InstancedMesh(sg, lam(0xffffff, { map: bookTex }), shelves.length);
+    shelves.forEach((s, i) => { m4.makeTranslation(s.c, 0, s.r); sm.setMatrixAt(i, m4); });
+    roomGroup.add(sm);
+  }
+  if (graves.length) {
+    const gg = new THREE.BoxGeometry(0.62, 0.8, 0.22); gg.translate(0, 0.4, 0);
+    const gm = new THREE.InstancedMesh(gg, lam(0x7d7a86), graves.length);
+    graves.forEach((s, i) => { m4.makeRotationY(((s.c * 13 + s.r * 7) % 5 - 2) * 0.08).setPosition(s.c, 0, s.r); gm.setMatrixAt(i, m4); });
+    roomGroup.add(gm);
+    const cross = textSprite("R.I.P", { size: 34, font: '"Do Hyeon",sans-serif', color: "#2a2730", w: 128, h: 48, scale: 0.18 });
+    graves.forEach(s => { const sp = cross.clone(); sp.position.set(s.c, 0.62, s.r + 0.13); roomGroup.add(sp); });
+  }
+  trees.forEach(t => {
+    const tg = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 1.4, 6), lam(0x2a1e1a)); trunk.position.y = 0.7;
+    const b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.06, 0.7, 5), lam(0x2a1e1a)); b1.position.set(0.22, 1.2, 0); b1.rotation.z = -0.9;
+    const b2 = b1.clone(); b2.position.set(-0.2, 1.35, 0.05); b2.rotation.z = 0.8;
+    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 0), lam(0x2c2240)); crown.position.y = 1.55;
+    tg.add(trunk, b1, b2, crown); tg.position.set(t.c, 0, t.r); tg.rotation.y = (t.c + t.r) * 0.7; roomGroup.add(tg);
+  });
+  G.lanterns.forEach((l, i) => {
+    const jm = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), new THREE.MeshLambertMaterial({ map: faceTex, emissive: 0xa04008, emissiveIntensity: 1 }));
+    jm.scale.y = 0.8; jm.position.set(l.c, 0.28, l.r); jm.rotation.y = -Math.PI / 2 - Math.PI / 4; roomGroup.add(jm);
+    if (decorLights[i]) decorLights[i].position.set(l.c, 1.0, l.r);
+  });
+  decorLights.forEach((l, i) => l.intensity = G.lanterns[i] ? 0.9 : 0);
+
+  // 문
+  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.96, 1.5, 0.3), new THREE.MeshLambertMaterial({ map: doorTex, emissive: 0x1a0d06 }));
+  doorMesh.position.set(G.door.c, 0.75, G.door.r + 0.3); roomGroup.add(doorMesh); G.doorMesh = doorMesh;
+  const lockS = textSprite("🔒", { size: 80, scale: 0.55 }); lockS.position.set(G.door.c, 1.9, G.door.r + 0.3); roomGroup.add(lockS); G.lockSprite = lockS;
+
+  // 촛불 원
+  const sc = safeTiles.reduce((a, t) => ({ x: a.x + t.c / safeTiles.length, z: a.z + t.r / safeTiles.length }), { x: 0, z: 0 });
+  G.safeCenter = sc;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.25, 1.45, 48), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.55 }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(sc.x, 0.02, sc.z); roomGroup.add(ring); G.ring = ring;
+  [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([a, b]) => {
+    const cdl = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.26, 8), lam(0xf4ecd8)); cdl.position.set(sc.x + a, 0.13, sc.z + b);
+    const fl = textSprite("🔥", { size: 80, scale: 0.26 }); fl.position.set(sc.x + a, 0.36, sc.z + b);
+    roomGroup.add(cdl, fl);
+  });
+  altarLight.position.set(sc.x, 1.6, sc.z);
+
+  // 조각
+  G.pieces.forEach(p => {
+    const s = SYMBOLS[p.idx];
+    const sp = textSprite(s.e, { size: 78, scale: 0.62, bg: "rgba(255,240,200,.92)" });
+    sp.position.set(p.c, 0.65, p.r); roomGroup.add(sp); p.mesh = sp;
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: 0.35 }));
+    glow.rotation.x = -Math.PI / 2; glow.position.set(p.c, 0.03, p.r); roomGroup.add(glow); p.glow = glow;
+  });
+  // 아이템
+  G.items.forEach(it => {
+    const e = it.kind === "time" ? "⏳" : it.kind === "bell" ? "🔔" : "🍬";
+    const sp = textSprite(e, { size: 84, scale: it.kind === "candy" ? 0.4 : 0.55 });
+    sp.position.set(it.c, 0.5, it.r); roomGroup.add(sp); it.mesh = sp;
+  });
+  // 순서 표지판
+  if (G.sign) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.1, 6), lam(0x5a3a22)); post.position.set(G.sign.c, 0.55, G.sign.r); roomGroup.add(post);
+    const hidden = textSprite("?", { size: 90, font: '"Do Hyeon",sans-serif', color: "#3b2a1c", w: 256, h: 96, scale: 0.5, bg: "#d8c49a" });
+    hidden.position.set(G.sign.c, 1.35, G.sign.r); roomGroup.add(hidden); G.sign.mesh = hidden;
+  }
+
+  // 플레이어 위치
+  const sp2 = [{ c: G.spawn.c, r: G.spawn.r }, { c: G.spawn.c + 1, r: G.spawn.r }];
+  if (!isSafe(sp2[1].c, sp2[1].r)) sp2[1].c = G.spawn.c - 1;
+  players.forEach((p, i) => {
+    p.x = sp2[i].c; p.z = sp2[i].r; p.path = null; p.stunT = 0; p.invuln = 1; p.g.visible = i < G.players; p.stars.visible = false; p.g.rotation.set(0, 0, 0);
+    playerLights[i].intensity = i < G.players ? 1.1 : 0;
+  });
+  ambient.color.setHex(R.ambient);
+  G.time = R.time; G.confuseT = 0; G.roomElapsed = 0;
+  G.doorOpenT = -1;
+  camTarget.set(G.spawn.c, 0, G.spawn.r);
+
+  // HUD
+  document.getElementById("roomName").textContent = R.name;
+  document.getElementById("roomSub").textContent = `${idx + 1} / ${ROOMS.length} · ${R.sub}`;
+  renderPiecesHUD(); renderOrderHUD(); updatePocketHUD();
+}
+
+/* ---------- HUD ---------- */
+const $ = id => document.getElementById(id);
+function renderPiecesHUD() {
+  $("pieces").innerHTML = G.pieces.map(p => {
+    const s = SYMBOLS[p.idx];
+    return `<div class="pc ${p.solved ? "solved" : p.got ? "got" : ""}" title="${s.name} 조각">${s.e}${p.solved ? `<b>${G.answers[G.pieces.indexOf(p)]}</b>` : ""}</div>`;
+  }).join("");
+}
+function orderSyms() { return G.order.map(i => SYMBOLS[i].e).join(" "); }
+function renderOrderHUD() {
+  $("order").innerHTML = G.sign && G.sign.found ? `표지판 순서 <span class="sym">${orderSyms()}</span>` : "순서 표지판을 찾아보세요";
+}
+function updatePocketHUD() {
+  $("bellN").textContent = G.bells; $("useBell").disabled = G.bells <= 0;
+  $("candyN").textContent = G.stats.candy;
+}
+function fmt(t) { t = Math.max(0, Math.ceil(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; }
+let toastTimer = 0;
+function toast(msg, ms = 2800) {
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+}
+function flash(op = 0.5) { const f = $("flash"); f.style.transition = "none"; f.style.opacity = op; setTimeout(() => { f.style.transition = "opacity .8s"; f.style.opacity = 0; }, 40); }
+function tutorial(key, msg) { if (G.roomIdx !== 0 || G.tut[key]) return; G.tut[key] = true; toast(msg, 4200); }
+
+/* ---------- 입력 ---------- */
+const keys = new Set();
+window.addEventListener("keydown", e => {
+  if (e.target && e.target.tagName === "TEXTAREA") { if (e.code === "Escape") modalKey(e); return; }
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
+  if (!$("modal").hidden) {
+    // Enter는 한 번만 처리: 창이 직접 다루지 않으면 초점 잡힌 버튼을 누른다
+    if (e.code === "Enter" || e.code === "NumpadEnter") {
+      e.preventDefault();
+      const a = document.activeElement;
+      if (modalKey(e) !== true && a && a.tagName === "BUTTON" && sheet.contains(a)) a.click();
+      return;
+    }
+    modalKey(e); return;
+  }
+  if (G.mode !== "play") return;
+  keys.add(e.code);
+  if (e.code === "Escape") openPause();
+  if (e.code === "KeyQ" || e.code === "Slash") useBell();
+  if ((e.code === "KeyE" || e.code === "Enter" || e.code === "NumpadEnter") && !$("interact").hidden) openLock();
+});
+window.addEventListener("keyup", e => keys.delete(e.code));
+window.addEventListener("blur", () => { keys.clear(); if (G.mode === "play") openPause(); });
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+renderer.domElement.addEventListener("pointerdown", e => {
+  if (G.mode !== "play") return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  if (!ray.ray.intersectPlane(groundPlane, hit)) return;
+  let t = tileOf(hit.x, hit.z);
+  if (isSolid(t.c, t.r)) {
+    const near = [[0, 1], [1, 0], [0, -1], [-1, 0]].map(([dc, dr]) => ({ c: t.c + dc, r: t.r + dr })).filter(n => !isSolid(n.c, n.r));
+    if (!near.length) return; t = near[0];
+  }
+  const p = players[0]; if (p.stunT > 0) return;
+  const path = bfs(tileOf(p.x, p.z), t, playerPass, 2000);
+  if (path) p.path = path;
+});
+
+/* ---------- 갱신 ---------- */
+const SCREEN_UP = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 }, SCREEN_RIGHT = { x: Math.SQRT1_2, z: -Math.SQRT1_2 };
+const playerActive = p => p.i < G.players && p.stunT <= 0 && p.invuln <= 0 && !isSafe(Math.round(p.x), Math.round(p.z));
+
+function readInput(i) {
+  const solo = G.players === 1;
+  const up = i === 0 ? keys.has("KeyW") || (solo && keys.has("ArrowUp")) : keys.has("ArrowUp");
+  const dn = i === 0 ? keys.has("KeyS") || (solo && keys.has("ArrowDown")) : keys.has("ArrowDown");
+  const lf = i === 0 ? keys.has("KeyA") || (solo && keys.has("ArrowLeft")) : keys.has("ArrowLeft");
+  const rt = i === 0 ? keys.has("KeyD") || (solo && keys.has("ArrowRight")) : keys.has("ArrowRight");
+  const ix = (rt ? 1 : 0) - (lf ? 1 : 0), iy = (up ? 1 : 0) - (dn ? 1 : 0);
+  let vx = SCREEN_RIGHT.x * ix + SCREEN_UP.x * iy, vz = SCREEN_RIGHT.z * ix + SCREEN_UP.z * iy;
+  const l = Math.hypot(vx, vz); if (l > 0) { vx /= l; vz /= l; }
+  return { vx, vz, any: l > 0 };
+}
+
+function updatePlayers(dt) {
+  for (const p of players) {
+    if (p.i >= G.players) continue;
+    if (p.invuln > 0) p.invuln -= dt;
+    if (p.stunT > 0) {
+      p.stunT -= dt;
+      p.stars.visible = true; p.g.rotation.z = 0.9;
+      const other = players[1 - p.i];
+      if (G.players === 2 && other.stunT <= 0 && dist2(p, other) < 0.85) {
+        p.stunT = 0; p.invuln = 1.5; toast(`${other.i + 1}P가 ${p.i + 1}P를 깨웠어요!`); Sound.correct();
+      } else if (p.stunT <= 0) {
+        p.x = G.spawn.c + (p.i ? 1 : 0); p.z = G.spawn.r; if (isSolid(Math.round(p.x), Math.round(p.z))) p.x = G.spawn.c;
+        p.invuln = 2; p.path = null;
+      }
+      if (p.stunT <= 0) { p.stars.visible = false; p.g.rotation.z = 0; }
+      continue;
+    }
+    const inp = readInput(p.i);
+    p.moving = false;
+    if (inp.any) {
+      p.path = null;
+      slideMove(p, inp.vx * PLAYER_SPEED * dt, inp.vz * PLAYER_SPEED * dt, 0.28, playerPass);
+      p.face = Math.atan2(inp.vx, inp.vz); p.moving = true;
+    } else if (p.path && p.path.length) {
+      p.moving = followPath(p, PLAYER_SPEED, dt);
+    }
+    if (p.moving) p.bob += dt * 12;
+
+    // 줍기
+    for (const pc of G.pieces) if (!pc.got && dist2(p, { x: pc.c, z: pc.r }) < 0.6) {
+      pc.got = true; pc.mesh.visible = false; pc.glow.visible = false; Sound.play("pickup", 0.9);
+      toast(`${SYMBOLS[pc.idx].e} ${SYMBOLS[pc.idx].name} 조각을 주웠어요!`); renderPiecesHUD();
+      tutorial("piece", "조각의 문제는 문 앞 촛불 원 안에서 풀어요. 그곳엔 괴물이 못 들어와요.");
+    }
+    for (const it of G.items) if (!it.taken && dist2(p, { x: it.c, z: it.r }) < 0.6) {
+      it.taken = true; it.mesh.visible = false; Sound.play("pickup", 0.6, it.kind === "candy" ? 1.4 : 1.1);
+      if (it.kind === "time") { G.time += 30; toast("⏳ 모래시계! 시간 +30초"); }
+      else if (it.kind === "bell") { G.bells++; toast(`🔔 박쥐 방울! ${G.players === 2 ? "Q(1P) 또는 /(2P)" : "Q"} 를 누르면 괴물이 8초 동안 헤매요`); }
+      else { G.stats.candy++; }
+      updatePocketHUD();
+    }
+    if (G.sign && !G.sign.found && dist2(p, { x: G.sign.c, z: G.sign.r }) < 1.8) revealSign();
+  }
+}
+
+function revealSign() {
+  G.sign.found = true;
+  const m = G.sign.mesh; roomGroup.remove(m); m.material.map.dispose(); m.material.dispose();
+  const shown = textSprite(orderSyms(), { size: 64, w: 360, h: 96, scale: 0.62, bg: "#d8c49a" });
+  shown.position.set(G.sign.c, 1.35, G.sign.r); roomGroup.add(shown); G.sign.mesh = shown;
+  Sound.play("pickup", 0.5, 0.8);
+  toast(`표지판을 찾았어요: ${orderSyms()} — 이 순서가 자물쇠 번호 순서예요`, 4200);
+  renderOrderHUD();
+}
+
+function nearestActive(m) {
+  let best = null, bd = 1e9;
+  for (const p of players) if (playerActive(p)) { const d = dist2(m, p); if (d < bd) { bd = d; best = p; } }
+  return best ? { p: best, d: bd } : null;
+}
+function pickWander(m) {
+  const t0 = tileOf(m.x, m.z);
+  for (let k = 0; k < 10; k++) {
+    const c = t0.c + Math.floor(Math.random() * 13) - 6, r = t0.r + Math.floor(Math.random() * 13) - 6;
+    if (!monsterPass(c, r)) continue;
+    const path = bfs(t0, { c, r }, monsterPass);
+    if (path && path.length) { m.path = path; return; }
+  }
+  m.path = [];
+}
+
+function updateMonsters(dt) {
+  const confused = G.confuseT > 0;
+  for (const m of G.monsters) {
+    m.anim += dt;
+    m.bang.visible = m.state === "alert" || m.state === "chase";
+    m.huh.visible = confused;
+    if (m.restT > 0) { m.restT -= dt; continue; }
+
+    if (m.type === "ghost") {
+      const tgt = confused ? null : nearestActive(m);
+      let dx, dz;
+      if (tgt) { dx = tgt.p.x - m.x; dz = tgt.p.z - m.z; m.state = tgt.d < 3 ? "chase" : "wander"; }
+      else { m.state = "wander"; dx = Math.sin(m.anim * 0.4); dz = Math.cos(m.anim * 0.3); }
+      const d = Math.hypot(dx, dz) || 1, step = m.walk * dt * (confused ? 0.6 : 1);
+      const nx = m.x + dx / d * step, nz = m.z + dz / d * step, t = tileOf(nx, nz);
+      if (!isSafe(t.c, t.r) && t.c > 0 && t.r > 0 && t.c < G.cols - 1 && t.r < G.rows - 1) { m.x = nx; m.z = nz; }
+      m.face = Math.atan2(dx, dz);
+    } else {
+      const tgt = confused ? null : nearestActive(m);
+      if (confused && m.state !== "wander") { m.state = "wander"; m.path = []; }
+      if (m.state === "wander") {
+        if (!followPath(m, m.walk * (confused ? 1.3 : 1), dt)) pickWander(m);
+        if (tgt && tgt.d < m.sight && (!m.needLOS || lineOfSight(m, tgt.p))) {
+          m.state = "alert"; m.alertT = 0.6; m.target = tgt.p; m.path = []; m.lostT = 0;
+          if (G.t - G.lastSpot > 2.5) { Sound.play("spotted", 0.7); G.lastSpot = G.t; }
+          tutorial("spot", "호박귀신이 너희를 봤어요! 괴물은 너희보다 느려요. 멀리 도망가거나 촛불 원으로!");
+        }
+      } else if (m.state === "alert") {
+        m.alertT -= dt; m.face = Math.atan2(m.target.x - m.x, m.target.z - m.z);
+        if (m.alertT <= 0) { m.state = "chase"; m.repathT = 0; }
+      } else if (m.state === "chase") {
+        const p = m.target, d = dist2(m, p);
+        const seen = !m.needLOS || lineOfSight(m, p);
+        m.lostT = seen ? 0 : m.lostT + dt;
+        if (!playerActive(p) || d > m.sight + 3 || m.lostT > 2.5) { m.state = "wander"; m.path = []; }
+        else {
+          m.repathT -= dt;
+          if (m.repathT <= 0) { m.path = bfs(tileOf(m.x, m.z), tileOf(p.x, p.z), monsterPass) || []; m.repathT = 0.35; }
+          if (m.path.length <= 1 && d < 1.6 && lineOfSight(m, p)) {
+            const dx = p.x - m.x, dz = p.z - m.z, l = Math.hypot(dx, dz) || 1;
+            slideMove(m, dx / l * m.run * dt, dz / l * m.run * dt, 0.25, monsterPass); m.face = Math.atan2(dx, dz);
+          } else if (!followPath(m, m.run, dt)) { m.repathT = 0; }
+        }
+      }
+    }
+    // 잡기
+    if (!confused) for (const p of players) if (playerActive(p) && dist2(m, p) < 0.55) {
+      catchPlayer(p, m); m.restT = 2; m.state = "wander"; m.path = [];
+    }
+  }
+}
+function catchPlayer(p) {
+  p.stunT = G.players === 2 ? 6 : 1.5; p.path = null; G.stats.catches++;
+  Sound.play("caught", 0.9);
+  const other = players[1 - p.i];
+  if (G.players === 2 && other.stunT <= 0) toast(`${p.i + 1}P가 기절했어요! ${other.i + 1}P가 6초 안에 닿으면 깨어나요`);
+  else if (G.players === 2) toast("둘 다 기절! 잠시 후 촛불 원에서 깨어나요");
+  else toast("펑! 촛불 원으로 돌아가요");
+}
+function useBell() {
+  if (G.mode !== "play" || G.bells <= 0) return;
+  G.bells--; G.confuseT = 8; updatePocketHUD();
+  Sound.tone([1568, 1319, 1568, 1319, 1760], { type: "triangle", gap: 0.07, dur: 0.18, vol: 0.12 });
+  toast("🔔 딸랑딸랑! 괴물들이 8초 동안 어리둥절해요");
+}
+function midnight() {
+  G.stats.midnights++; G.time += 60; flash(0.55); Sound.play("bell", 1);
+  players.forEach((p, i) => { if (i < G.players) { p.x = G.spawn.c + (i ? 1 : 0); p.z = G.spawn.r; if (isSolid(Math.round(p.x), Math.round(p.z))) p.x = G.spawn.c; p.stunT = 0; p.invuln = 2; p.path = null; p.stars.visible = false; p.g.rotation.z = 0; } });
+  toast("🔔 자정의 종이 울렸어요! 촛불 원으로 돌아왔지만, 모은 조각은 그대로예요. 시간 +60초", 4600);
+}
+
+function update(dt) {
+  G.t += dt; G.roomElapsed += dt; G.stats.elapsed += dt;
+  G.time -= dt;
+  if (G.time <= 0) midnight();
+  if (G.confuseT > 0) G.confuseT -= dt;
+  updatePlayers(dt);
+  updateMonsters(dt);
+
+  const canLock = players.some(p => p.i < G.players && p.stunT <= 0 && isSafe(Math.round(p.x), Math.round(p.z)));
+  $("interact").hidden = !canLock;
+  if (canLock && G.pieces.some(p => p.got && !p.solved)) tutorial("lock", "촛불 원 안이에요. ‘자물쇠 풀기’를 눌러 문제를 풀어 보세요.");
+
+  const tm = $("timer");
+  tm.firstChild.nodeValue = fmt(G.time);
+  tm.classList.toggle("low", G.time < 30);
+
+  // 쫓기면 심장 소리
+  G.heartT -= dt;
+  const chased = G.monsters.some(m => m.state === "chase" && players.some(p => p.i < G.players && dist2(m, p) < 4));
+  if (chased && G.heartT <= 0) { Sound.heart(); G.heartT = 0.9; }
+}
+
+/* 장식 애니메이션은 멈춤 중에도 돈다 */
+function animate(dt, t) {
+  for (const p of players) {
+    p.g.position.set(p.x, p.moving && p.stunT <= 0 ? Math.abs(Math.sin(p.bob)) * 0.06 : 0, p.z);
+    if (p.stunT <= 0) p.g.rotation.y += angleLerp(p.g.rotation.y, p.face, 0.25);
+    p.stars.material.rotation = t * 3;
+    playerLights[p.i].position.set(p.x + 0.2, 1.3, p.z + 0.2);
+  }
+  for (const m of G.monsters) {
+    const float = m.type === "skeleton" ? 0 : Math.sin(m.anim * 2.4) * 0.08 + (m.type === "ghost" ? 0.15 : 0);
+    m.g.position.set(m.x, float, m.z);
+    m.g.rotation.y += angleLerp(m.g.rotation.y, m.face, 0.15);
+    if (m.g.userData.legs) { const s = Math.sin(m.anim * 9) * 0.35; m.g.userData.legs[0].rotation.x = s; m.g.userData.legs[1].rotation.x = -s; }
+    if (G.confuseT > 0) m.g.rotation.z = Math.sin(t * 6) * 0.15; else m.g.rotation.z = 0;
+  }
+  for (const pc of G.pieces) if (!pc.got) { pc.mesh.position.y = 0.65 + Math.sin(t * 2 + pc.c) * 0.08; pc.glow.material.opacity = 0.25 + Math.sin(t * 3 + pc.r) * 0.12; }
+  for (const it of G.items) if (!it.taken) it.mesh.position.y = 0.5 + Math.sin(t * 2.4 + it.c * 2) * 0.06;
+  if (G.ring) G.ring.material.opacity = 0.45 + Math.sin(t * 2) * 0.12;
+  decorLights.forEach((l, i) => { if (G.lanterns[i]) l.intensity = 0.75 + Math.sin(t * 13 + i) * 0.08 + Math.sin(t * 7.3 + i * 2) * 0.1; });
+  altarLight.intensity = 1.1 + Math.sin(t * 9) * 0.08;
+  if (G.doorOpenT >= 0 && G.doorMesh) {
+    G.doorOpenT += dt;
+    G.doorMesh.position.y = 0.75 - Math.min(1, G.doorOpenT / 1.1) * 1.6;
+  }
+}
+function angleLerp(a, b, k) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d * k; }
+
+function updateCamera(dt) {
+  const act = players.filter(p => p.i < G.players);
+  const cx = act.reduce((s, p) => s + p.x, 0) / act.length, cz = act.reduce((s, p) => s + p.z, 0) / act.length;
+  camTarget.x += (cx - camTarget.x) * Math.min(1, dt * 4);
+  camTarget.z += (cz - camTarget.z) * Math.min(1, dt * 4);
+  let want = 10.5;
+  if (act.length === 2) want = Math.min(17, Math.max(10.5, dist2(act[0], act[1]) * 1.15 + 5));
+  if (G.mode === "title") want = 12;
+  viewSize += (want - viewSize) * Math.min(1, dt * 2);
+  const aspect = window.innerWidth / window.innerHeight;
+  const vs = aspect < 0.8 ? viewSize * 1.25 : viewSize;
+  camera.top = vs / 2; camera.bottom = -vs / 2; camera.left = -vs * aspect / 2; camera.right = vs * aspect / 2;
+  camera.updateProjectionMatrix();
+  camera.position.copy(camTarget).add(CAM_OFFSET);
+  camera.lookAt(camTarget);
+}
+
+/* ---------- 손전등 어둠 ---------- */
+const dark = $("dark"), dctx = dark.getContext("2d");
+const DS = 3; // 어둠 캔버스는 1/3 해상도
+const proj = new THREE.Vector3();
+function toScreen(x, y, z) { proj.set(x, y, z).project(camera); return { x: (proj.x + 1) / 2 * dark.width, y: (1 - proj.y) / 2 * dark.height }; }
+function drawDark(t) {
+  const w = dark.width, h = dark.height;
+  dctx.globalCompositeOperation = "source-over";
+  dctx.clearRect(0, 0, w, h);
+  if (!G.room) return;
+  dctx.fillStyle = `rgba(6,3,12,${G.room.dark})`; dctx.fillRect(0, 0, w, h);
+  dctx.globalCompositeOperation = "destination-out";
+  const pxPerTile = h / (camera.top - camera.bottom);
+  const hole = (x, z, radTiles, strength = 1) => {
+    const s = toScreen(x, 0.3, z), R = radTiles * pxPerTile;
+    dctx.save(); dctx.translate(s.x, s.y); dctx.scale(1, ELEV_SIN);
+    const g = dctx.createRadialGradient(0, 0, 0, 0, 0, R);
+    g.addColorStop(0, `rgba(0,0,0,${strength})`); g.addColorStop(0.55, `rgba(0,0,0,${strength * 0.85})`); g.addColorStop(1, "rgba(0,0,0,0)");
+    dctx.fillStyle = g; dctx.beginPath(); dctx.arc(0, 0, R, 0, Math.PI * 2); dctx.fill(); dctx.restore();
+  };
+  const flick = 1 + Math.sin(t * 11) * 0.02 + Math.sin(t * 5.7) * 0.02;
+  for (const p of players) if (p.i < G.players) hole(p.x, p.z, G.room.light * flick * (p.stunT > 0 ? 0.6 : 1));
+  if (G.safeCenter) hole(G.safeCenter.x, G.safeCenter.z, 2.6, 0.9);
+  G.lanterns.forEach(l => hole(l.c, l.r, 1.5, 0.75));
+  G.monsters.forEach(m => { if (m.type === "pumpkin") hole(m.x, m.z, 0.9, 0.6); });
+  if (G.doorOpenT >= 0 && G.door) hole(G.door.c, G.door.r + 1, 3, 1);
+}
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  dark.width = Math.ceil(window.innerWidth / DS); dark.height = Math.ceil(window.innerHeight / DS);
+}
+window.addEventListener("resize", resize); resize();
+
+/* ---------- 대화창 ---------- */
+const sheet = $("sheet");
+let modalKey = () => { };
+function openModal(html, onKey = () => { }) {
+  sheet.innerHTML = html; $("modal").hidden = false; modalKey = onKey; keys.clear();
+  const f = sheet.querySelector("[autofocus], button"); if (f) f.focus({ preventScroll: true });
+}
+function closeModal() { $("modal").hidden = true; modalKey = () => { }; }
+
+function openPause() {
+  if (G.mode !== "play") return;
+  G.mode = "paused";
+  openModal(`<h2>잠깐 멈춤</h2><p class="lead">괴물도 시간도 멈췄어요.</p>
+    <div class="ctl"><kbd>W A S D</kbd><span>1P 이동 ${G.players === 1 ? "(방향키·바닥 클릭도 돼요)" : ""}</span>
+    ${G.players === 2 ? "<kbd>방향키</kbd><span>2P 이동</span>" : ""}
+    <kbd>E</kbd><span>촛불 원에서 자물쇠 풀기</span><kbd>${G.players === 2 ? "Q · /" : "Q"}</kbd><span>박쥐 방울 쓰기</span></div>
+    <div class="row"><button class="btn-ink ghost" id="mQuit">처음 화면으로</button><button class="btn-ink" id="mGo" autofocus>계속하기</button></div>`,
+    e => { if (e.code === "Escape") resume(); });
+  $("mGo").onclick = resume;
+  $("mQuit").onclick = () => { closeModal(); toTitle(); };
+}
+function resume() { closeModal(); G.mode = "play"; clock.getDelta(); }
+
+/* 자물쇠 */
+let L = null;
+function openLock() {
+  if (G.mode !== "play") return;
+  G.mode = "modal"; L = { view: "list", pi: 0, input: "", code: [] };
+  renderLock();
+}
+function renderLock() {
+  if (L.view === "list") {
+    const allSolved = G.pieces.every(p => p.solved), signOk = G.sign && G.sign.found;
+    const cards = G.pieces.map((p, k) => {
+      const s = SYMBOLS[p.idx];
+      if (!p.got) return `<button class="card missing" disabled><span class="e">${s.e}</span>아직 못 찾음</button>`;
+      if (p.solved) return `<button class="card solved" disabled><span class="e">${s.e}</span><strong>= ${G.answers[k]}</strong></button>`;
+      return `<button class="card" data-k="${k}"><span class="e">${s.e}</span>문제 풀기</button>`;
+    }).join("");
+    const need = !allSolved ? "조각 문제를 모두 풀면 번호를 넣을 수 있어요." : !signOk ? "순서 표지판을 먼저 찾아야 해요." : "준비 완료! 표지판 순서대로 번호를 넣어요.";
+    openModal(`<h2>촛불 원의 자물쇠</h2>
+      <p class="lead">조각을 눌러 문제를 풀어요. 풀이하는 동안 괴물과 시간은 멈춰 있어요.</p>
+      <div class="orderbox">표지판 순서 ${signOk ? `<span class="sym">${orderSyms()}</span>` : "<span>??? · 방 어딘가에 있어요</span>"}</div>
+      <div class="cards">${cards}</div>
+      <p class="lead" style="margin-top:12px">${need}</p>
+      <div class="row"><button class="btn-ink ghost" id="lClose">닫기</button><button class="btn-ink" id="lCode" ${allSolved && signOk ? "autofocus" : "disabled"}>자물쇠 번호 넣기</button></div>`,
+      e => { if (e.code === "Escape") closeLock(); });
+    sheet.querySelectorAll(".card[data-k]").forEach(b => b.onclick = () => { L.view = "q"; L.pi = +b.dataset.k; L.input = ""; renderLock(); });
+    $("lClose").onclick = closeLock;
+    $("lCode").onclick = () => { L.view = "code"; L.code = []; renderLock(); };
+  } else if (L.view === "q") {
+    const p = G.pieces[L.pi], q = QBANK[G.roomIdx][p.idx], s = SYMBOLS[p.idx];
+    openModal(`<h2><span style="font-family:var(--f-emoji)">${s.e}</span> ${s.name} 조각</h2>
+      <p class="qtext">${esc(q.q)}</p>
+      <div class="answer"><div class="slot" id="ans">${L.input}</div></div>
+      ${pad()}
+      ${p.wrong >= 2 ? `<div class="hint">힌트: ${esc(q.hint || "천천히 다시 읽어 보세요.")}</div>` : ""}
+      <div class="row">${p.wrong >= 4 ? `<button class="btn-ink ghost" id="qReveal">정답 보기</button>` : ""}<button class="btn-ink ghost" id="qBack">뒤로</button><button class="btn-ink" id="qOk">확인</button></div>`,
+      e => {
+        if (/^(Digit|Numpad)\d$/.test(e.code)) { L.input = e.code.slice(-1); $("ans").textContent = L.input; }
+        else if (e.code === "Backspace") { L.input = ""; $("ans").textContent = ""; }
+        else if (e.code === "Enter" || e.code === "NumpadEnter") { checkAnswer(); return true; }
+        else if (e.code === "Escape") { L.view = "list"; renderLock(); }
+      });
+    bindPad(d => { L.input = d === "x" ? "" : d; $("ans").textContent = L.input; });
+    $("qBack").onclick = () => { L.view = "list"; renderLock(); };
+    $("qOk").onclick = checkAnswer;
+    if ($("qReveal")) $("qReveal").onclick = () => { G.stats.hints++; solvePiece(p, true); };
+  } else {
+    const map = G.pieces.map((p, k) => `<span><span class="e">${SYMBOLS[p.idx].e}</span> = ${G.answers[k]}</span>`).join("");
+    const slots = G.order.map((idx, k) => `<div class="slot-col"><span class="e">${SYMBOLS[idx].e}</span><div class="slot">${L.code[k] ?? ""}</div></div>`).join("");
+    openModal(`<h2>자물쇠 번호</h2>
+      <p class="lead">표지판 순서대로, 각 기호의 숫자를 넣어요.</p>
+      <div class="mapping">${map}</div>
+      <div class="answer" id="codeRow">${slots}</div>
+      ${pad()}
+      ${L.codeWrong ? `<div class="hint">표지판 순서는 ${orderSyms()} 예요. 왼쪽 기호부터 숫자를 찾아 넣어 보세요.</div>` : ""}
+      <div class="row"><button class="btn-ink ghost" id="cBack">뒤로</button></div>`,
+      e => {
+        if (/^(Digit|Numpad)\d$/.test(e.code)) codeDigit(e.code.slice(-1));
+        else if (e.code === "Backspace") codeDigit("x");
+        else if (e.code === "Escape") { L.view = "list"; renderLock(); }
+      });
+    bindPad(codeDigit);
+    $("cBack").onclick = () => { L.view = "list"; renderLock(); };
+  }
+}
+function pad() { return `<div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(n => `<button data-d="${n}">${n}</button>`).join("")}</div><div class="pad" style="grid-template-columns:1fr;max-width:420px;margin-top:8px"><button data-d="x">⌫ 지우기</button></div>`; }
+function bindPad(fn) { sheet.querySelectorAll(".pad button").forEach(b => b.onclick = () => fn(b.dataset.d)); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function checkAnswer() {
+  const p = G.pieces[L.pi], q = QBANK[G.roomIdx][p.idx];
+  if (L.input === "") return;
+  if (+L.input === q.a) { solvePiece(p, false); return; }
+  p.wrong++; Sound.wrong();
+  if (p.wrong === 2) G.stats.hints++;
+  L.input = ""; renderLock();
+  const a = $("ans"); a.classList.add("shake");
+}
+function solvePiece(p) {
+  p.solved = true; Sound.correct(); renderPiecesHUD();
+  const k = G.pieces.indexOf(p);
+  $("ans").textContent = G.answers[k]; $("ans").style.borderColor = "#2f8f74";
+  setTimeout(() => { if (L) { L.view = "list"; renderLock(); } }, 650);
+}
+function codeDigit(d) {
+  if (d === "x") { L.code.pop(); renderLock(); return; }
+  if (L.code.length >= G.order.length) return;
+  L.code.push(d); renderLock();
+  if (L.code.length === G.order.length) {
+    const want = G.order.map(idx => G.answers[G.pieces.findIndex(p => p.idx === idx)]).join("");
+    if (L.code.join("") === want) { setTimeout(roomClear, 350); }
+    else { Sound.wrong(); L.codeWrong = true; setTimeout(() => { if (!L) return; L.code = []; renderLock(); $("codeRow").classList.add("shake"); }, 300); }
+  }
+}
+function closeLock() { L = null; closeModal(); G.mode = "play"; clock.getDelta(); }
+
+function roomClear() {
+  L = null; closeModal(); G.mode = "cutscene";
+  Sound.play("door_open", 1); G.doorOpenT = 0; G.lockSprite.visible = false;
+  setTimeout(() => { Sound.fanfare(); }, 900);
+  setTimeout(() => {
+    const last = G.roomIdx === ROOMS.length - 1;
+    openModal(`<h2>${G.room.name} 탈출!</h2>
+      <p class="story">${esc(G.room.diary)}</p>
+      <p class="lead">이 방에서 ${fmt(G.roomElapsed)} 걸렸어요.</p>
+      <div class="row"><button class="btn-ink" id="nNext" autofocus>${last ? "저택 밖으로" : "다음 방으로"}</button></div>`,
+      );
+    const next = () => { closeModal(); if (last) showEnding(); else { loadRoom(G.roomIdx + 1); G.mode = "play"; clock.getDelta(); toast(`${G.room.name} — ${G.room.sub}`); } };
+    $("nNext").onclick = next;
+  }, 1600);
+}
+
+function showEnding() {
+  G.mode = "end";
+  openModal(`<h2>탈출 성공!</h2>
+    <p class="story">${esc(ENDING)}</p>
+    <div class="stats">
+      <div class="stat"><b>${fmt(G.stats.elapsed)}</b><span>걸린 시간</span></div>
+      <div class="stat"><b>${G.stats.candy}/${G.stats.candyTotal}</b><span>모은 사탕</span></div>
+      <div class="stat"><b>${G.stats.midnights}</b><span>자정의 종</span></div>
+      <div class="stat"><b>${G.stats.hints}</b><span>힌트 사용</span></div>
+      <div class="stat"><b>${G.stats.catches}</b><span>기절</span></div>
+    </div>
+    <p class="lead">선생님께 이 화면을 보여 주세요.</p>
+    <div class="row"><button class="btn-ink ghost" id="eTitle">처음 화면</button><button class="btn-ink" id="eAgain" autofocus>다시 하기</button></div>`);
+  $("eAgain").onclick = () => { closeModal(); startGame(); };
+  $("eTitle").onclick = () => { closeModal(); toTitle(); };
+}
+
+/* 선생님 문제 편집 */
+function openEditor() {
+  openModal(`<h2>문제 바꾸기</h2>
+    <p class="lead">방마다 한 묶음([현관], [도서관], [정원]). 답 <b>a</b>는 0~9 한 자리 숫자. 현관 2개, 도서관·정원 4개 이상이 필요해요. 이 기기의 브라우저에만 저장돼요.</p>
+    <textarea id="qjson" spellcheck="false"></textarea>
+    <div class="err" id="qerr"></div>
+    <div class="row"><button class="btn-ink ghost" id="qDefault">기본 문제로</button><button class="btn-ink ghost" id="qClose">닫기</button><button class="btn-ink" id="qSave">저장</button></div>`,
+    e => { if (e.code === "Escape") closeModal(); });
+  $("qjson").value = JSON.stringify(QBANK, null, 2);
+  $("qClose").onclick = closeModal;
+  $("qDefault").onclick = () => { $("qjson").value = JSON.stringify(DEFAULT_QBANK, null, 2); $("qerr").textContent = "기본 문제를 불러왔어요. 저장을 눌러야 적용돼요."; };
+  $("qSave").onclick = () => {
+    let q; try { q = JSON.parse($("qjson").value); } catch (e) { $("qerr").textContent = "JSON 형식이 맞지 않아요: " + e.message; return; }
+    const err = validateQBank(q); if (err) { $("qerr").textContent = err; return; }
+    QBANK = q; store.set("pumpkin-qbank", JSON.stringify(q)); $("qerr").textContent = "저장했어요."; setTimeout(closeModal, 600);
+  };
+}
+
+/* ---------- 흐름 ---------- */
+function setSeg(id, v) { $(id).querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v))); }
+$("segMode").onclick = e => { const b = e.target.closest("button"); if (!b) return; G.players = +b.dataset.v; setSeg("segMode", b.dataset.v);
+  $("keysHint").innerHTML = G.players === 2 ? "<kbd>W A S D</kbd> 1P · <kbd>방향키</kbd> 2P · 한 키보드로 둘이 함께" : "<kbd>W A S D</kbd> 또는 <kbd>방향키</kbd> · 바닥을 눌러도 움직여요"; };
+$("segDiff").onclick = e => { const b = e.target.closest("button"); if (!b) return; G.diff = b.dataset.v; setSeg("segDiff", b.dataset.v); };
+$("startBtn").onclick = () => { Sound.init(); Sound.startAmb(); startGame(); };
+$("editBtn").onclick = openEditor;
+$("useBell").onclick = useBell;
+$("pauseBtn").onclick = openPause;
+$("interact").onclick = openLock;
+$("muteBtn").onclick = () => { Sound.setMuted(!Sound.muted); $("muteIcon").textContent = Sound.muted ? "🔇" : "🔊"; };
+$("muteIcon").textContent = Sound.muted ? "🔇" : "🔊";
+
+function startGame() {
+  G.stats = { candy: 0, candyTotal: 0, midnights: 0, hints: 0, elapsed: 0, catches: 0 };
+  G.bells = 0; G.tut = {}; G.t = 0;
+  loadRoom(0);
+  $("title").hidden = true; $("hud").hidden = false; $("bottom").hidden = false;
+  G.mode = "cutscene";
+  openModal(`<h2>할로윈 밤</h2><p class="story">${esc(PROLOGUE)}</p>
+    <div class="ctl">${G.players === 2 ? "<kbd>W A S D</kbd><span>1P 이동</span><kbd>방향키</kbd><span>2P 이동</span>" : "<kbd>W A S D · 방향키</kbd><span>이동 (바닥을 눌러도 돼요)</span>"}
+    <kbd>E</kbd><span>촛불 원에서 자물쇠 풀기</span></div>
+    <p class="lead">조각 ${SYMBOLS.map(s => s.e).join("")}을 모으고, 순서 표지판을 찾고, 촛불 원에서 문제를 풀어요.${G.players === 2 ? " 친구가 기절하면 달려가서 닿아 주세요!" : ""}</p>
+    <div class="row"><button class="btn-ink" id="pGo" autofocus>도와줄게!</button></div>`);
+  const go = () => { closeModal(); G.mode = "play"; clock.getDelta(); tutorial("move", G.players === 2 ? "1P는 WASD, 2P는 방향키로 움직여요. 반짝이는 조각을 찾아보세요!" : "WASD나 방향키, 또는 바닥을 눌러 움직여요. 반짝이는 조각을 찾아보세요!"); };
+  $("pGo").onclick = go;
+}
+function toTitle() {
+  G.mode = "title"; $("title").hidden = false; $("hud").hidden = true; $("bottom").hidden = true;
+  loadRoom(0); players.forEach(p => p.g.visible = false); playerLights.forEach(l => l.intensity = 0);
+}
+
+/* ---------- 루프 ---------- */
+const clock = new THREE.Clock();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  if (G.mode === "play") update(dt);
+  else if (G.mode === "title") { G.monsters.forEach(m => { m.anim += dt; if (!followPath(m, m.walk, dt)) pickWander(m); }); camTarget.set((G.cols - 1) / 2, 0, (G.rows - 1) / 2); }
+  animate(dt, t);
+  updateCamera(dt);
+  renderer.render(scene, camera);
+  drawDark(t);
+}
+toTitle();
+frame();
+</script>
