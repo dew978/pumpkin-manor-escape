@@ -477,9 +477,27 @@ function addPlayerActor(r) {
 function removePlayerActor(slot) { const p = S.players.get(slot); if (p) { scene.remove(p.grp); if (p.beam) scene.remove(p.beam); S.players.delete(slot); } }
 
 const eyeTex = glowTexture('255,40,30'), eyeTexG = glowTexture('120,255,170'), handGlow = glowTexture('255,210,140');
+// 괴물이 어둠 속에서도 생김새가 보이게: 모델 색을 스스로 조금 빛나게 한다(원본 재질마다 한 번만 복제해 같이 쓴다)
+const litMats = new Map();
+function litMaterial(m) {
+  if (!m || !('emissive' in m)) return m;
+  let c = litMats.get(m);
+  if (!c) {
+    c = m.clone();
+    if (m.map) { c.emissive = new THREE.Color(0xffffff); c.emissiveMap = m.map; } else c.emissive = m.color.clone();
+    c.emissiveIntensity = 0.42;
+    litMats.set(m, c);
+  }
+  return c;
+}
+const haloTex = glowTexture('190,150,255');
 function makeMonsterActor(spec, s) {
   const grp = new THREE.Group();
   const model = spawnModel(spec.model, spec.h); grp.add(model);
+  model.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(litMaterial) : litMaterial(o.material); });
+  // 등 뒤 은은한 빛무리: 어두운 바닥·벽 앞에서 윤곽이 드러난다(쫓을 때는 붉게)
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, opacity: 0.32 }));
+  halo.scale.set(spec.h * 1.25, spec.h * 1.25, 1); halo.position.y = spec.h * 0.55; halo.renderOrder = -1; grp.add(halo);
   const size = modelSize(spec.model); const k = size ? spec.h / size.y : 1; const depth = size ? size.z * k : 0.5;
   const eyes = [-1, 1].map(sx => {
     const e = new THREE.Sprite(new THREE.SpriteMaterial({ map: spec.kind === 'bat' ? eyeTexG : eyeTex, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, color: 0xffffff }));
@@ -493,7 +511,7 @@ function makeMonsterActor(spec, s) {
   const yum = labelSprite('냠냠', '#ffd27a', 0.55); yum.position.y = spec.h + 0.5; yum.visible = false; grp.add(yum);
   grp.position.set(s.c, spec.float || 0, s.r);
   S.world.group.add(grp);
-  return { spec, grp, model, eyes, bang, huh, want, yum, x: s.c, z: s.r, tx: s.c, tz: s.r, face: 0, tface: 0, state: 0, anim: Math.random() * 10 };
+  return { spec, grp, model, eyes, halo, bang, huh, want, yum, x: s.c, z: s.r, tx: s.c, tz: s.r, face: 0, tface: 0, state: 0, anim: Math.random() * 10 };
 }
 
 function updateStageSub() {
@@ -580,7 +598,15 @@ function handleEvent(e) {
     if (S.puzzle) say(fragLines(S.stageIdx, e.n, S.puzzle.parts[e.id], { face: ch.face, name: p?.name || ch.costume, color: ch.color }, e.n < 4 ? roomHint() : null, S.round));
     if (e.slot === S.mySlot) flashScreen('#fff2c0', 0.25);
   }
-  else if (e.k === 'answerWrong') { if (e.slot === S.mySlot) Sound.bad(); (S.note.wrongPicks ??= new Set()).add(e.v); S.note.picked = null; renderNote(); }
+  else if (e.k === 'answerWrong') {
+    // 틀리면 붙인 쪽지가 다시 흩어진다: 쪽지 창을 닫고 순서 맞추기도 처음부터(고른 오답은 기억해서 다시 못 고르게)
+    if (e.slot === S.mySlot) Sound.bad();
+    (S.note.wrongPicks ??= new Set()).add(e.v);
+    Object.assign(S.note, { tray: shuffle([0, 1, 2, 3]), slots: [null, null, null, null], picked: null });
+    toggleNote(false); renderNote(); flashScreen('#c9a8ff', 0.35);
+    say([lumiLine('앗, 쪽지가 다시 흩어졌어! 감지기를 보고 ? 가구를 다시 뒤져 봐. 다시 붙이면 힌트도 보여 줄게.')]);
+  }
+  else if (e.k === 'fragMoved' && e.slot === S.mySlot) { Sound.bad(); flashScreen('#fff2c0', 0.2); }
   else if (e.k === 'throw') startFlight(e);
   else if (e.k === 'eat') Sound.playAt('pickup', e.x, e.z, me.x, me.z, 0.6, 12);
   else if (e.k === 'flash') { if (Math.hypot(e.x - me.x, e.z - me.z) < 10) flashScreen('#c9a8ff', 0.45); }
@@ -825,6 +851,7 @@ function animateActors(dt, t) {
     m.yum.visible = m.state === 9; if (m.state === 9) m.yum.position.y = s.h + 0.5 + Math.abs(Math.sin(t * 6)) * 0.12;
     const glow = m.state === 7 ? 0.25 : chasing ? 1.5 + Math.sin(t * 20) * 0.3 : 0.9;
     m.eyes.forEach(e => e.scale.setScalar((s.kind === 'spider' ? 0.16 : 0.2) * glow));
+    m.halo.material.color.setHex(chasing ? 0xff6a5a : 0xffffff); m.halo.material.opacity = chasing ? 0.5 + Math.sin(t * 8) * 0.08 : 0.32;
   }
   animateThrows(dt, t);
   for (const fx of S.searchFx || []) if (fx.grp.visible) { const k = 0.75 + Math.sin(t * 3 + fx.seed) * 0.25; fx.gl.scale.setScalar(0.55 + k * 0.3); fx.gl.material.opacity = k; fx.q.position.y = 0.05 + Math.sin(t * 2 + fx.seed) * 0.06; }

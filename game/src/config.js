@@ -29,7 +29,7 @@ const DOORS = [9, 10, 11, 19, 20, 21];
 
 export const STAGES = [
   {
-    id: 1, name: '저택 1층', sub: '현관 · 도서관 · 식당', style: 'manor', time: 660, notes: 2,
+    id: 1, name: '저택 1층', sub: '현관 · 도서관 · 식당', style: 'manor', time: 840, notes: 2,
     fog: 0x150c20, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -60,7 +60,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 2, name: '지하 서고', sub: '책장 미로 · 해골 기사', style: 'cellar', time: 990, notes: 3,
+    id: 2, name: '지하 서고', sub: '책장 미로 · 해골 기사', style: 'cellar', time: 1170, notes: 3,
     fog: 0x0b0f18, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -91,7 +91,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 3, name: '지하 창고', sub: '나무통 미로 · 거미 둥지', style: 'cellar', time: 990, notes: 3,
+    id: 3, name: '지하 창고', sub: '나무통 미로 · 거미 둥지', style: 'cellar', time: 1170, notes: 3,
     fog: 0x0d0b10, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -122,7 +122,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 4, name: '저택 2층', sub: '침실 · 인형 방 · 서재', style: 'manor', time: 990, notes: 3,
+    id: 4, name: '저택 2층', sub: '침실 · 인형 방 · 서재', style: 'manor', time: 1170, notes: 3,
     fog: 0x170b1c, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -137,7 +137,7 @@ export const STAGES = [
       R('.........c.', '..h....h..', '.BBB...BBB.'),
       R('b....v.....', '..........', '...........'),
       R('...........', '.h..QQ..h.', '.BBB...BBB.'),
-      R('..H.....i..', '..........', '....k.....f'),
+      R('..H.....i..', '..........', '..........f'),
       R('.hh........', '.o......o.', '..H......c.'),
       R('b.......b..', '..........', 'b.........b'),
       WALLS,
@@ -153,7 +153,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 5, name: '호박밭', sub: '허수아비 마당 · 덩굴 미로', style: 'garden', time: 990, notes: 3,
+    id: 5, name: '호박밭', sub: '허수아비 마당 · 덩굴 미로', style: 'garden', time: 1170, notes: 3,
     fog: 0x10140c, ambient: 0.06,
     map: withDoors([
       TOP,
@@ -184,7 +184,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 6, name: '묘지 정원', sub: '안개 낀 묘지 · 까마귀 박사 · 마지막 층', style: 'garden', time: 990, notes: 3,
+    id: 6, name: '묘지 정원', sub: '안개 낀 묘지 · 까마귀 박사 · 마지막 층', style: 'garden', time: 1170, notes: 3,
     fog: 0x0c1612, ambient: 0.06,
     map: withDoors([
       TOP,

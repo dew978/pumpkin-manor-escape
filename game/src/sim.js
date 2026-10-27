@@ -8,6 +8,8 @@ const ITEM_CODES = ['time', 'crystal', 'potion'];
 export const STATE_CODES = { patrol: 0, alert: 1, chase: 2, search: 3, rest: 4, lunge: 5, windup: 6, blind: 7, lured: 8, eat: 9 };
 // 사탕 던지기: 이만큼 멀리 던지고, 떨어진 곳에서 이 거리 안의 괴물이 사탕을 먹으러 간다
 export const THROW_RANGE = 7, LURE_R = 6, EAT_T = 4.5, THROW_FLY = 0.55;
+// 같은 괴물은 한 층에서 사탕에 이만큼만 속는다(그 뒤로는 사탕을 본체만체)
+export const LURE_MAX = 3;
 
 export class Sim {
   // puzzles: 이 층의 쪽지 문제들(차례로 하나씩). round: 몇 번째 쪽지부터(다시 도전하면 실패한 쪽지부터)
@@ -184,6 +186,15 @@ export class Sim {
     if (!s || s.searched || s.lockT > 0 || p.caged >= 0 || p.escaped || p.hidden >= 0 || Math.hypot(s.c - p.x, s.r - p.z) > 2.4) return;
     p.peekT = 0;
     const [icon, name] = SEARCHABLE[s.ch] || ['🔍', '가구'];
+    if (!ok && s.frag >= 0) {
+      const f = this.fragments[s.frag], to = this.freeSpot([s]);
+      if (to) {
+        s.frag = -1; this.placeFrag(f, to); this.snd('paper', s.c, s.r, p.slot);
+        this.ev({ k: 'fragMoved', slot: p.slot, spot: id });
+        this.toast(`📜 앗! ${name} 속 쪽지 조각이 휙 날아가 다른 ? 가구로 숨었어요. 감지기를 봐요!`, p.slot);
+        return;
+      }
+    }
     if (!ok) {
       s.lockT = SEARCH_LOCK; this.snd('cage', s.c, s.r, p.slot);
       this.toast(`🔒 ${josa(name, '이가')} ${SEARCH_LOCK}초 동안 잠겼어요. 다시 오면 다른 문제가 나와요`, p.slot);
@@ -238,15 +249,33 @@ export class Sim {
 
   // 사탕이 땅에 닿으면 가까운 괴물(돌진 중인 거미와 눈먼 괴물은 빼고)이 쫓던 것을 멈추고 사탕으로 간다
   landLure(L) {
-    let n = 0;
+    let n = 0; const tired = [], last = [];
     for (const m of this.monsters) {
       if (m.blindT > 0 || m.state === 'eat' || m.state === 'lunge' || Math.hypot(m.x - L.x, m.z - L.z) > LURE_R) continue;
       if (m.state === 'lured') { const cur = this.lures.find(o => o.id === m.lure && !o.gone); if (cur && dist(m, cur) <= dist(m, L)) continue; }
+      else {
+        if ((m.lureN || 0) >= LURE_MAX) { tired.push(m.spec.name); continue; }
+        m.lureN = (m.lureN || 0) + 1; if (m.lureN === LURE_MAX) last.push(m.spec.name);
+      }
       m.state = 'lured'; m.lure = L.id; m.path = []; m.repathT = 0; m.target = -1; m.sawHide = -1; m.restT = 0; n++;
     }
     this.snd('pickup', L.x, L.z);
-    this.toast(n ? `🍬 괴물 ${n}마리가 사탕 냄새를 맡았어요! 지금 피해요` : '🍬 사탕을 던졌어요. 근처에는 괴물이 없었어요', L.by);
+    let msg = n ? `🍬 괴물 ${n}마리가 사탕 냄새를 맡았어요! 지금 피해요` : tired.length ? '🍬 사탕을 던졌어요' : '🍬 사탕을 던졌어요. 근처에는 괴물이 없었어요';
+    if (last.length) msg += ` · ${josa([...new Set(last)].join(', '), '은는')} 이번이 마지막이에요`;
+    if (tired.length) msg += ` · ${josa([...new Set(tired)].join(', '), '은는')} 사탕에 질려서 이제 안 속아요!`;
+    this.toast(msg, L.by);
   }
+
+  // 쪽지 조각을 숨길 가구: 아직 안 뒤진 꽝 가구 중 하나(없으면 뒤진 꽝 가구를 다시 닫는다)
+  freeSpot(not = []) {
+    let pool = this.spots.filter(s => !s.searched && s.frag < 0 && !not.includes(s));
+    if (!pool.length) pool = this.spots.filter(s => s.frag < 0 && !not.includes(s));
+    if (!pool.length) return null;
+    const s = pool[Math.floor(this.rand() * pool.length)];
+    if (s.searched) { s.searched = false; s.lockT = 0; }
+    return s;
+  }
+  placeFrag(f, s) { s.frag = f.id; f.taken = false; f.x = s.c; f.z = s.r; f.spot = s.id; }
 
   // 사탕으로 가는 괴물·먹는 괴물. 이동 중에는 학생을 잡지 않는다
   stepLured(m, dt) {
@@ -292,11 +321,21 @@ export class Sim {
       this.ev({ k: 'open', name: p.name }); this.snd('gate', this.exitTiles[0].c, this.exitTiles[0].r);
       this.toast(`🚪 ${josa(p.name, '이가')} 정답! 탈출문이 열렸어요. 북쪽 문으로 달려요!`);
     } else {
-      const pen = this.diffKey === 'easy' ? 5 : 10;
-      this.pz.wrong++; this.stats.wrong++; this.time -= pen;
+      this.pz.wrong++; this.stats.wrong++;
+      this.scatter();
       this.ev({ k: 'answerWrong', slot: p.slot, v });
-      this.toast(`❌ "${v}"은(는) 정답이 아니에요. 시간 −${pen}초 · 힌트를 보세요`);
+      this.toast(`❌ "${v}"은(는) 정답이 아니에요. 쪽지가 찢어져 ? 가구들로 다시 흩어졌어요! 다시 모아서 붙여요`);
     }
+  }
+
+  // 틀린 답: 붙인 쪽지가 다시 네 조각으로 흩어져 ? 가구들에 숨는다(같은 문제, 다시 붙이면 힌트가 보인다)
+  scatter() {
+    const used = [];
+    for (const f of this.fragments) {
+      const s = this.freeSpot(used); if (!s) continue;
+      used.push(s); this.placeFrag(f, s);
+    }
+    this.pz.have.clear(); this.pz.assembled = false;
   }
 
   catchPlayer(p, m) {
@@ -312,12 +351,10 @@ export class Sim {
       this.stealAt = this.elapsed;
       const ids = [...this.pz.have]; const id = ids[Math.floor(this.rand() * ids.length)];
       this.pz.have.delete(id);
-      let pool = this.spots.filter(s => !s.searched && s.frag < 0);
-      if (!pool.length) pool = this.spots.filter(s => s.frag < 0);
       // 가구마다 문제를 풀어야 하니 너무 먼 곳만 고르지 않는다(남은 꽝 가구 중 아무 곳)
-      const far = pool[Math.floor(this.rand() * pool.length)];
-      far.searched = false; far.frag = id; far.lockT = 0;
-      const f = this.fragments[id]; f.taken = false; f.x = far.c; f.z = far.r; f.spot = far.id; this.stats.stolen++;
+      const far = this.freeSpot();
+      if (far) { far.lockT = 0; this.placeFrag(this.fragments[id], far); }
+      this.stats.stolen++;
       msg += ` 쪽지 조각 하나를 빼앗겼어요`;
     }
     if (p.hidden >= 0) p.hidden = -1;
