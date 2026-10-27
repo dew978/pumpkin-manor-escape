@@ -13,7 +13,7 @@ const LUMI = [
     '여기 책들은 백 년 전 그대로야. 나도 여기서 책 읽는 걸 좋아했… 아니, 그냥 그렇다고!',
     '해골 기사는 귀가 밝아. 쫓기면 옷장에 숨어 봐.',
     '책장 사이 거미 조심해! 가까이 가면 갑자기 튀어나와.',
-    '다 모았구나! 문제를 풀면 정원으로 나가는 계단이 열릴 거야.',
+    '다 모았구나! 문제를 풀면 더 깊은 창고로 내려가는 문이 열릴 거야.',
   ],
   [
     '나무통 속에 쪽지가 있었구나! 여긴 백 년 묵은 호박잼 냄새가 나.',
@@ -57,25 +57,27 @@ const LUMI_MORE = [
   '다 모았어! 이어 붙여서 문제를 풀어 봐.',
 ];
 
-// 층을 시작할 때 루미가 하는 말(만화가 없는 층 사이 이야기도 여기서 잇는다)
+// 층을 시작할 때 루미가 하는 말
 export const STAGE_INTRO = [
   ['쪽지는 가구 속에 숨겨져 있어! 반짝이는 책장·탁자 옆에서 단추를 눌러 뒤져 봐. 위의 감지기가 뜨거워지면 가까운 거야.', '이 층에는 쪽지가 2장 있어. 하나를 풀면 다음 쪽지가 다른 가구에 나타나!'],
   ['지하 서고야. 여기는 쪽지가 3장 숨겨져 있어. 감지기를 잘 봐!'],
-  ['서고 아래에 창고가 또 있었네! 나무통 사이 거미줄 조심해.', '쪽지는 3장이야. 다 풀면 2층으로 올라가는 계단이 열려.'],
+  ['나무통 사이 거미줄 조심해! 거미가 둥지를 지키고 있어.', '쪽지는 3장이야. 다 풀면 2층으로 올라가는 계단이 열려.'],
   ['계단을 올라 저택 2층이야. 여기는… 왠지 내가 잘 아는 곳 같아.', '이번엔 쪽지가 3장이나 있어! 시간을 잘 봐.'],
   ['정원으로 가려면 호박밭을 지나야 해. 허수아비가 방금 움직인 것 같지 않았어?', '여기도 쪽지가 3장이야!'],
   ['마지막 묘지 정원이야. 쪽지 3장을 모두 풀면 진짜 출구가 열려!', '자정까지 얼마 안 남았어. 서두르자!'],
 ];
-// 층을 깬 뒤 보여 줄 만화(없는 층은 다음 층 시작할 때 루미가 이야기를 잇는다)
-export const AFTER_COMIC = { 0: 'after1', 3: 'after2' };
+// 층을 깬 뒤 보여 줄 만화(마지막 층은 엔딩 만화)
+export const AFTER_COMIC = { 0: 'after1', 1: 'cellar2', 2: 'upstairs', 3: 'after2', 4: 'gate' };
 
 export const LUMI_FACE = 'assets/faces/lumi.jpg';
 
-export function fragLines(stageIdx, n, part, kid, hint, round = 0) {
+// 층 대사는 첫 쪽지에서, 네 번째 조각 대사(층 마무리 말)는 마지막 쪽지에서만 한다(1층은 붙이는 법 안내라 첫 쪽지에서)
+export function fragLines(stageIdx, n, part, kid, hint, round = 0, last = true) {
   const k = Math.max(1, Math.min(4, n)) - 1;
+  const own = k < 3 ? round === 0 : stageIdx === 0 ? round === 0 : last;
   const lines = [
     { face: kid.face, name: kid.name, color: kid.color, text: KID[k](part) },
-    { face: LUMI_FACE, name: '루미', color: '#9fd8ff', text: round ? LUMI_MORE[k] : LUMI[stageIdx % LUMI.length][k] },
+    { face: LUMI_FACE, name: '루미', color: '#9fd8ff', text: own ? LUMI[stageIdx % LUMI.length][k] : LUMI_MORE[k] },
   ];
   if (hint) lines.push(lumiLine(hint));
   return lines;
@@ -99,7 +101,7 @@ function show(l) {
   b.querySelector('.face').src = l.face; b.querySelector('.face').style.borderColor = l.color;
   const who = b.querySelector('.who'); who.textContent = l.name; who.style.color = l.color;
   const line = b.querySelector('.line'); line.textContent = '';
-  b.hidden = false; b.classList.remove('in'); void b.offsetWidth; b.classList.add('in');
+  b.hidden = false; document.getElementById('app').classList.add('dlg-on'); b.classList.remove('in'); void b.offsetWidth; b.classList.add('in');
   // 글자를 한 자씩(초등학생이 따라 읽기 좋게 조금 천천히)
   let i = 0; clearInterval(typing);
   typing = setInterval(() => { i++; line.textContent = l.text.slice(0, i); if (i >= l.text.length) clearInterval(typing); }, 28);
@@ -108,12 +110,12 @@ function show(l) {
 function next() {
   clearTimeout(timer); clearInterval(typing);
   const l = queue.shift();
-  if (l) show(l); else if (box) box.hidden = true;
+  if (l) show(l); else if (box) { box.hidden = true; document.getElementById('app').classList.remove('dlg-on'); }
 }
 export function say(lines) {
   const idle = !box || box.hidden;
   queue.push(...lines);
   if (idle) next();
 }
-export function clearDialog() { queue.length = 0; clearTimeout(timer); clearInterval(typing); if (box) box.hidden = true; }
+export function clearDialog() { queue.length = 0; clearTimeout(timer); clearInterval(typing); if (box) box.hidden = true; document.getElementById('app').classList.remove('dlg-on'); }
 export const dialogOpen = () => !!box && !box.hidden;

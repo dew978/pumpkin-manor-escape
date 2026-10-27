@@ -8,7 +8,7 @@ import { STAGES, MONSTERS, CHARACTERS, EDGE_COLORS, PLAYER_SPEED, diffForGrade, 
 import { loadBank, defaultBank, validateBank, pickQuestions } from './questions.js';
 import { loadModels, spawnModel, modelSize, glowTexture } from './assets.js';
 import { loadKids, makeKid, playKid, hasKid } from './chars.js';
-import { playComic } from './comic.js';
+import { playComic, closeComic, comicOpen } from './comic.js';
 import { say, fragLines, lumiLine, clearDialog, dialogOpen, STAGE_INTRO, AFTER_COMIC } from './dialog.js';
 import { buildWorld, fadeUniform, labelSprite } from './world.js';
 import { Sim, ITEM_CODES, THROW_RANGE, LURE_R } from './sim.js';
@@ -102,7 +102,7 @@ const S = {
   heartT: 0, shake: 0, totals: { time: 0, caught: 0, stolen: 0, wrong: 0, items: 0, candy: 0, stars: 0 },
   chestQuiz: [], chestOpen: [], candies: [], candyN: 0,
   flights: [], lureFx: new Map(),   // 날아가는 사탕, 바닥에 떨어진 사탕
-  searchFx: [], searchList: null, fragList: null, searching: null,   // 뒤질 가구, 쪽지 위치(감지기·힌트용)
+  searchFx: [], searchList: null, fragList: null, searching: null, leadSeen: 0, chestSeen: 0, seen: new Set(), lastStart: null, resume: null,   // 뒤질 가구, 쪽지 위치(감지기·힌트용)
 };
 
 /* ---------- 입력 ---------- */
@@ -304,11 +304,14 @@ function sendInput(m) {
 async function startHost() {
   setTitleErr('');
   S.mode = 'host'; S.mySlot = 0; S.roster = [{ slot: 0, name: myName(), char: S.char ?? 0 }];
+  // 지난번에 하던 곳이 있으면 시작 층을 거기로(시작 층을 바꾸면 그 층 처음부터)
+  const sv = loadProgress(); S.resume = sv; S.startStage = sv ? sv.st : 0;
   showScreen('lobby'); renderLobby(); $('lobbyStatus').textContent = '방을 여는 중…';
+  $('lobbyHint').textContent = sv ? `친구에게 이 코드를 알려 주세요. 최대 4명. 지난번에 이어서 ${saveLabel(sv)} 시작해요.` : '친구에게 이 코드를 알려 주세요. 최대 4명.';
   try {
     S.link = await hostRoom({
       status: (s, d) => {
-        if (s === 'ready') { $('lobbyCode').textContent = S.link.code; $('lobbyStatus').textContent = '친구를 기다리는 중'; }
+        if (s === 'ready') { $('lobbyCode').textContent = S.link.code; $('lobbyStatus').textContent = '친구를 기다리는 중'; showCodeBadge(S.link.code); }
         else if (s === 'error') $('lobbyStatus').textContent = `연결 문제: ${d}. 인터넷을 확인하고 다시 만들어 주세요.`;
       },
       // 친구에게는 아직 아무도 고르지 않은 분장을 준다
@@ -323,12 +326,25 @@ async function startHost() {
         if (m.t === 'hello') {
           const r = S.roster.find(q => q.slot === slot); if (r) { r.name = String(m.name || '').slice(0, 6) || `친구${slot}`; r.pending = false; }
           broadcastLobby();
-          if (S.inGame) S.link.send(slot, { t: 'wait', msg: '게임이 진행 중이에요. 다음 층부터 함께해요!' });
-        } else if (m.t === 'pos') S.sim?.setPlayer(slot, +m.x, +m.z, +m.f, !!m.mv);
+          if (S.inGame && S.sim && S.lastStart && S.sim.phase === 'play' && r) {
+            // 층이 진행 중이면 지금 쪽지부터 바로 함께한다(시작 자리에서)
+            S.sim.addPlayer(r);
+            const roster = [...S.sim.players.values()].map(({ slot, name, char }) => ({ slot, name, char }));
+            S.link.send(slot, { ...S.lastStart, round: S.sim.round, roster, late: true });
+          } else if (S.inGame) S.link.send(slot, { t: 'wait', msg: '층이 끝나는 중이에요. 다음 층부터 함께해요!' });
+        } else if (m.t === 'seen') { S.seen.add(slot); updateSeen(); }
+        else if (m.t === 'pos') S.sim?.setPlayer(slot, +m.x, +m.z, +m.f, !!m.mv);
         else S.sim?.input(slot, m);
       },
     });
   } catch (e) { $('lobbyStatus').textContent = e.message; }
+}
+// 방장이 도입 만화를 보는 동안에도 방 코드를 화면 위에 띄워 둔다(친구들이 먼저 들어올 수 있게)
+function showCodeBadge(code) {
+  let b = $('codeBadge');
+  if (!b) { b = document.createElement('div'); b.id = 'codeBadge'; $('app').appendChild(b); }
+  b.innerHTML = `방 코드 <b>${esc(code)}</b><small>친구들에게 알려 주세요</small>`;
+  b.hidden = !comicOpen();
 }
 function broadcastLobby() {
   renderLobby();
@@ -362,17 +378,34 @@ async function startJoin() {
   } catch (e) { leaveToTitle(e.message); }
 }
 
+// 이어 하기: 혼자 하기·방장 기기에 학년별로 어디까지 했는지 저장한다(사흘 동안)
+const SAVE_KEY = 'pumpkin3-save', SAVE_DAYS = 3;
+function saveProgress(st, rd) {
+  if (!S.totals) return;
+  store.set(SAVE_KEY, JSON.stringify({ grade: S.grade, st, rd: rd | 0, totals: S.totals, at: Date.now() }));
+}
+function clearProgress() { store.set(SAVE_KEY, ''); }
+function loadProgress() {
+  try {
+    const s = JSON.parse(store.get(SAVE_KEY) || 'null');
+    if (!s || s.grade !== S.grade || Date.now() - s.at > SAVE_DAYS * 864e5 || !(s.st >= 0 && s.st < STAGES.length)) return null;
+    if (s.st === 0 && !s.rd) return null;   // 1층 처음이면 이어 할 것이 없다
+    return s;
+  } catch (e) { return null; }
+}
+const saveLabel = (s) => `${s.st + 1}층 ${STAGES[s.st].name}${s.rd ? ` · 쪽지 ${s.rd + 1}장째` : ''}부터`;
 function newRun() {
   // 이번 판의 문제: 학년 교과 + 할로윈 상식을 섞어 층마다 쪽지 수만큼, 상자·가구 문제는 층마다 묶음으로.
   // 기본 문제 은행이면 학년 산수 문제(그때그때 만듦)를 섞어 한 시간 동안 덜 겹치게 한다
-  S.run = pickQuestions(S.bank, S.grade, { notes: STAGES.map(s => s.notes || 1), chest: CHEST_N, math: !store.get('pumpkin3-bank') });
+  S.run = pickQuestions(S.bank, S.grade, { notes: STAGES.map(s => s.notes || 1), chest: CHEST_N });
   S.diff = diffForGrade(S.grade, S.diffSetting);
   S.totals = { time: 0, caught: 0, stolen: 0, wrong: 0, items: 0, candy: 0, stars: 0 };
 }
-function startSolo() {
+function startSolo(resume = null) {
   S.mode = 'solo'; S.mySlot = 0; S.roster = [{ slot: 0, name: myName(), char: S.char ?? 0 }];
   newRun();
-  launchStage(S.startStage);
+  if (resume) { S.totals = { ...S.totals, ...resume.totals }; launchStage(resume.st, resume.rd); }
+  else launchStage(0);
 }
 
 // 방장(또는 혼자): 판을 만들고 모두에게 알린다
@@ -382,6 +415,7 @@ function launchStage(idx, round = 0) {
   const set = S.run.sets[idx];
   const msg = { t: 'start', st: idx, puzzles: S.run.floors[idx], round, chestQuiz: set.slice(0, CHEST_N), searchQuiz: set.slice(CHEST_N), grade: S.grade,
     roster: S.roster.filter(r => !r.pending).map(({ slot, name, char }) => ({ slot, name, char })), diff: S.diff, seed: (Math.random() * 1e9) | 0 };
+  S.lastStart = msg; S.seen = new Set();
   S.link?.broadcast(msg);
   beginStage(msg);
   S.sim = new Sim({ stageIdx: idx, puzzles: msg.puzzles, round, chestQuiz: msg.chestQuiz, roster: msg.roster, diff: msg.diff, seed: msg.seed });
@@ -390,7 +424,7 @@ function launchStage(idx, round = 0) {
 
 function leaveToTitle(err = '') {
   if (S.mode === 'host') S.link?.broadcast({ t: 'title' });
-  S.link?.close(); S.link = null; S.mode = 'none'; S.sim = null; S.inGame = false; S.run = null; closeQuiz();
+  S.link?.close(); S.link = null; S.mode = 'none'; S.sim = null; S.inGame = false; S.run = null; S.lastStart = null; S.resume = null; closeQuiz(); closeComic();
   closeModal(); toggleNote(false);
   ['hud', 'bottom', 'compass', 'banner', 'hideview', 'stick', 'throwBtn'].forEach(id => $(id).hidden = true);
   $('lobbyRole').textContent = '방 코드'; $('lobbyHint').textContent = '친구에게 이 코드를 알려 주세요. 최대 4명.'; $('hostCtl').hidden = false;
@@ -400,6 +434,7 @@ function leaveToTitle(err = '') {
 
 /* ---------- 판 시작 ---------- */
 function beginStage(msg) {
+  closeComic(); if ($('codeBadge')) $('codeBadge').hidden = true;
   S.stageIdx = msg.st; S.puzzles = msg.puzzles || [msg.puzzle]; S.round = msg.round | 0; S.puzzle = S.puzzles[S.round]; S.roster = msg.roster; S.diff = msg.diff; S.playGrade = msg.grade ?? S.grade;
   S.chestQuiz = msg.chestQuiz || []; S.searchQuiz = msg.searchQuiz || []; S.searchQi = 0; S.chestOpen = []; S.candyN = 0; S.me.candy = 0; S.flights = []; S.lureFx = new Map(); closeQuiz();
   S.phase = 'play'; S.shownPhase = 'play'; S.paused = false;
@@ -412,16 +447,17 @@ function beginStage(msg) {
   if (!me && S.mode === 'client') { $('lobbyStatus').textContent = '게임이 진행 중이에요. 다음 층부터 함께해요!'; return; }
   S.inGame = true;
   showScreen(null); closeModal();
+  if (S.mode !== 'client') saveProgress(msg.st, S.round);
   ['hud', 'bottom'].forEach(id => $(id).hidden = false);
   $('stick').hidden = true;
   const st = STAGES[msg.st];
   $('stageName').textContent = st.name; updateStageSub();
   renderNote(); updateItemBtn();
-  toast(S.round ? `${st.name} — ${S.round + 1}번째 쪽지부터 다시 찾아요!` : `${st.name} — 쪽지 ${S.puzzles.length}장을 차례로 찾아요. 한 장은 4조각이에요!`, 4200);
+  toast(msg.late ? `${st.name} — 친구들과 함께 ${S.round + 1}번째 쪽지를 찾아요!` : S.round ? `${st.name} — ${S.round + 1}번째 쪽지부터 다시 찾아요!` : `${st.name} — 쪽지 ${S.puzzles.length}장을 차례로 찾아요. 한 장은 4조각이에요!`, 4200);
   // 루미가 찾는 법과 첫 방 힌트를 알려 준다
   setTimeout(() => {
     if (S.stageIdx !== msg.st || !S.inGame) return;
-    say([...(S.round ? [] : (STAGE_INTRO[msg.st] || []).map(lumiLine)), lumiLine(roomHint())]);
+    say([...(S.round || msg.late ? [] : (STAGE_INTRO[msg.st] || []).map(lumiLine)), lumiLine(roomHint())]);
   }, 2200);
   Sound.init();
 }
@@ -449,12 +485,14 @@ function buildStageScene(idx, roster) {
   updateLights(0); renderer.compile(scene, camera);
 }
 
+// 여러 층에서 같이 쓰는 텍스처(층을 바꿀 때 버리지 않는다)
+const SHARED_TEX = new Set();
 function disposeGroup(grp) {
   grp.traverse(o => {
     // 모델 원본과 공유하는 형상·재질은 남겨 둔다
     if (o.userData.shared || !(o.isMesh || o.isSprite)) return;
     if (!o.isSprite) o.geometry?.dispose();
-    for (const m of [].concat(o.material || [])) { if (m.map && m.map !== eyeTex && m.map !== eyeTexG) m.map.dispose(); m.dispose(); }
+    for (const m of [].concat(o.material || [])) { if (m.map && !SHARED_TEX.has(m.map)) m.map.dispose(); m.dispose(); }
   });
 }
 
@@ -491,6 +529,7 @@ function litMaterial(m) {
   return c;
 }
 const haloTex = glowTexture('190,150,255');
+SHARED_TEX.add(haloTex);
 function makeMonsterActor(spec, s) {
   const grp = new THREE.Group();
   const model = spawnModel(spec.model, spec.h); grp.add(model);
@@ -524,7 +563,7 @@ function startNote(rd) {
   S.pz = { have: [], asm: false, open: false, wrong: 0 };
   S.note = { tray: shuffle([0, 1, 2, 3]), slots: [null, null, null, null], picked: null };
   closeQuiz(); toggleNote(false);
-  for (const fx of S.searchFx) S.world.group.remove(fx.grp);
+  for (const fx of S.searchFx) { S.world.group.remove(fx.grp); fx.grp.traverse(o => { if (o.isSprite) { if (o.material.map !== searchGlowTex) o.material.map?.dispose(); o.material.dispose(); } }); }
   S.searchFx = []; S.searchList = null; S.fragList = null;
   updateStageSub(); renderNote();
 }
@@ -589,13 +628,14 @@ function handleEvent(e) {
   else if (e.k === 'open') { Sound.fanfare(); showCorrectThenOpen(e.name); }
   else if (e.k === 'note') {
     Sound.fanfare(); flashScreen('#fff2c0', 0.3);
+    if (S.mode !== 'client') saveProgress(S.stageIdx, e.rd);
     const left = S.puzzles.length - e.rd;
     say([lumiLine(left > 1 ? `정답! 그런데 문은 아직 안 열려. 쪽지가 ${left}장 더 있대!` : '정답! 이제 마지막 쪽지야. 이것만 풀면 탈출문이 열려!'), lumiLine(roomHint())]);
   }
   else if (e.k === 'arrangeWrong' && e.slot === S.mySlot) { Sound.bad(); renderNote(); $('noteSlots')?.classList.add('shake'); toast(lowGrade() ? '순서가 맞지 않아요. 번호 순서대로 놓아요' : '순서가 맞지 않아요. 이웃한 가장자리 색이 같게 조각을 끌어서 바꿔 봐요'); }
   else if (e.k === 'frag') {
     const p = S.players.get(e.slot), ch = CHARACTERS[(p?.char ?? 0) % CHARACTERS.length];
-    if (S.puzzle) say(fragLines(S.stageIdx, e.n, S.puzzle.parts[e.id], { face: ch.face, name: p?.name || ch.costume, color: ch.color }, e.n < 4 ? roomHint() : null, S.round));
+    if (S.puzzle) say(fragLines(S.stageIdx, e.n, S.puzzle.parts[e.id], { face: ch.face, name: p?.name || ch.costume, color: ch.color }, e.n < 4 ? roomHint() : null, S.round, S.round === S.puzzles.length - 1));
     if (e.slot === S.mySlot) flashScreen('#fff2c0', 0.25);
   }
   else if (e.k === 'answerWrong') {
@@ -727,6 +767,7 @@ function stepQuizRange() {
 }
 // 뒤질 곳 표시: 가구 위에 반짝임과 물음표(잠기면 자물쇠). 뒤진 곳은 사라진다
 const searchGlowTex = glowTexture('255,226,150');
+SHARED_TEX.add(searchGlowTex);
 function syncSearch(sr) {
   S.searchList = sr;
   const left = (S.fragList || []).some(f => !f[2]);   // 쪽지를 다 찾으면 표시를 모두 감춘다
@@ -1031,7 +1072,7 @@ function flashScreen(color, op) {
 /* ---------- 쪽지(조각 모으기 → 순서 맞추기 → 보기 고르기) ---------- */
 function toggleNote(force) {
   const el = $('note'); const show = force ?? el.hidden;
-  el.hidden = !show; if (show) { closeQuiz(); renderNote(); }
+  el.hidden = !show; $('app').classList.toggle('note-on', show); if (show) { closeQuiz(); renderNote(); }
 }
 // 1~2학년은 조각에 번호를 붙여 순서 맞추기를 쉽게 한다
 const lowGrade = () => (S.playGrade ?? S.grade) <= 2;
@@ -1040,16 +1081,31 @@ function pieceInner(i) { return (lowGrade() ? `<span class="num">${i + 1}</span>
 function choicesHTML(quiz, wrongSet) {
   return `<div class="choices">${quiz.choices.map((c, k) => `<button class="choice ${wrongSet?.has(c) ? 'wrong' : ''}" data-k="${k}" ${wrongSet?.has(c) ? 'disabled' : ''}>${esc(c)}</button>`).join('')}</div>`;
 }
+// 문제 읽어 주기(브라우저 음성). 1~2학년은 문제 창이 열리면 저절로 읽는다
+const canSpeak = 'speechSynthesis' in window;
+const readBtn = () => canSpeak ? '<button class="read" type="button" aria-label="문제 읽어 주기">🔊 읽어 주기</button>' : '';
+function speak(text) {
+  if (!canSpeak || Sound.muted) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 0.92;
+  const v = speechSynthesis.getVoices().find(v => v.lang?.startsWith('ko')); if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+function bindRead(body, quiz, auto) {
+  const text = `${quiz.q} 보기. ${quiz.choices.map((c, i) => `${i + 1}번, ${c}`).join('. ')}.`;
+  const b = body.querySelector('.read'); if (b) b.onclick = () => speak(text);
+  if (auto) speak(text);
+}
 function renderNote() {
   if (!S.puzzle) return;
   const body = $('noteBody'), N = S.puzzle.parts.length, have = S.pz.have;
   $('noteCount').textContent = S.pz.asm ? '문제 완성' : `${have.length} / ${N} 조각`;
   if (S.pz.open) { body.innerHTML = `<div class="correct"><b>정답!</b><span>${esc(S.puzzle.answer)}</span></div><p class="problem">${esc(S.puzzle.q)}</p>`; return; }
   if (S.pz.asm) {
-    const pen = S.diff === 'easy' ? 5 : 10;
     const hint = S.pz.wrong >= 1 ? `<div class="hint">힌트: ${esc(S.puzzle.hint || '문제를 천천히 다시 읽어 보세요.')}</div>` : '';
-    body.innerHTML = `<p class="note-lead">완성된 문제예요. 알맞은 답을 눌러요. 틀리면 시간이 ${pen}초 줄어요.</p>
-      <p class="problem">${esc(S.puzzle.q)}</p>${choicesHTML(S.puzzle, S.note.wrongPicks)}${hint}`;
+    body.innerHTML = `<p class="note-lead">완성된 문제예요. 알맞은 답을 눌러요. 틀리면 쪽지가 다시 흩어져요(다시 모아 붙이면 힌트가 보여요).</p>
+      ${readBtn()}<p class="problem">${esc(S.puzzle.q)}</p>${choicesHTML(S.puzzle, S.note.wrongPicks)}${hint}`;
+    bindRead(body, S.puzzle, false);
     body.querySelectorAll('.choice').forEach(b => b.onclick = () => {
       if (S.note.picked) return;
       S.note.picked = S.puzzle.choices[+b.dataset.k]; b.classList.add('right');
@@ -1135,23 +1191,24 @@ let quizAt = null;   // { kind: 'chest'|'search', id, x, z, answered }
 function openQuiz(id) {
   const quiz = S.chestQuiz[id % Math.max(1, S.chestQuiz.length)]; if (!quiz) return;
   const c = S.world.chests[id];
-  showQuiz({ kind: 'chest', id, x: c.c, z: c.r }, quiz, '🎃 호박 상자', '맞히면 아이템!', '문제를 맞히면 상자가 열려요. 기회는 한 번! (괴물은 계속 움직여요)',
+  showQuiz({ kind: 'chest', id, x: c.c, z: c.r }, quiz, '🎃 호박 상자', '맞히면 아이템!', S.chestSeen++ < 2 ? '문제를 맞히면 상자가 열려요. 기회는 한 번! (괴물은 계속 움직여요)' : '기회는 한 번!',
     ok => sendInput({ t: 'chest', id, ok }));
 }
 // 가구 문제: 이 층의 가구 문제 묶음에서 차례로 꺼낸다(틀린 뒤 다시 오면 다음 문제)
 function openSearchQuiz(id) {
   const a = S.searchList[id], quiz = S.searchQuiz[S.searchQi++ % Math.max(1, S.searchQuiz.length)]; if (!quiz) return;
   const [ic, nm] = SEARCHABLE[SEARCH_CODES[a[3]]] || ['🔍', '가구'];
-  Sound.play('paper', 0.6); sendInput({ t: 'peek', id });
+  Sound.play('paper', 0.6); sendInput({ t: 'peek', id, rd: S.round });
   showQuiz({ kind: 'search', id, x: a[0], z: a[1] }, quiz, `${ic} ${nm} 뒤지기`, '맞히면 뒤질 수 있어요',
-    `문제를 맞히면 ${josa(nm, '을를')} 뒤져요. 틀리면 잠깐 잠기고, 다시 오면 다른 문제가 나와요. 푸는 동안 몸을 숙여서 괴물 눈에 덜 띄지만, 움직이면 들켜요!`,
-    ok => sendInput({ t: 'search', id, ok }));
+    S.leadSeen++ < 2 ? `문제를 맞히면 ${josa(nm, '을를')} 뒤져요. 틀리면 잠깐 잠기고, 다시 오면 다른 문제가 나와요. 푸는 동안 몸을 숙여서 괴물 눈에 덜 띄지만, 움직이면 들켜요!` : '맞히면 뒤져요 · 움직이면 들켜요!',
+    ok => sendInput({ t: 'search', id, ok, rd: S.round }));
 }
 function showQuiz(at, quiz, title, sub, lead, send) {
   quizAt = at; toggleNote(false);
   $('quizTitle').textContent = title; $('quizSub').textContent = sub;
   const body = $('quizBody');
-  body.innerHTML = `<p class="note-lead">${esc(lead)}</p><p class="problem">${esc(quiz.q)}</p>${choicesHTML(quiz)}`;
+  body.innerHTML = `<p class="note-lead">${esc(lead)}</p>${readBtn()}<p class="problem">${esc(quiz.q)}</p>${choicesHTML(quiz)}`;
+  bindRead(body, quiz, lowGrade());
   body.querySelectorAll('.choice').forEach(b => b.onclick = () => {
     const pick = quiz.choices[+b.dataset.k], ok = pick === quiz.answer;
     body.querySelectorAll('.choice').forEach(x => { x.disabled = true; if (quiz.choices[+x.dataset.k] === quiz.answer) x.classList.add('right'); });
@@ -1163,6 +1220,7 @@ function showQuiz(at, quiz, title, sub, lead, send) {
   $('quiz').hidden = false;
 }
 function closeQuiz() {
+  if (canSpeak) speechSynthesis.cancel();
   if (quizAt?.kind === 'search' && !quizAt.answered) sendInput({ t: 'peek', id: -1 });
   quizAt = null; $('quiz').hidden = true;
 }
@@ -1194,19 +1252,31 @@ async function showClear(res) {
   const isHost = S.mode !== 'client';
   Sound.fanfare();
   // 층 사이 만화(마지막 층은 엔딩 만화 뒤 최종 결과)
+  if (isHost) { if (last) clearProgress(); else saveProgress(S.stageIdx + 1, 0); }
   if (last) { await playComic('ending'); showEnding(); return; }
   if (AFTER_COMIC[S.stageIdx]) await playComic(AFTER_COMIC[S.stageIdx]);
   if (S.stageIdx !== STAGES.indexOf(st)) return;   // 그사이 방장이 다음 층을 시작했다
+  if (S.mode === 'client') S.link?.send({ t: 'seen', st: S.stageIdx });
   openModal(`<div class="result-head"><h2>${esc(st.name)} 탈출!</h2>${res ? starHTML(res.stars) : ''}</div>
     ${res ? statHTML([[fmtTime(res.time), '걸린 시간'], [`${res.candy}/${res.candyTotal}`, '모은 사탕'], [res.chestOk, '연 호박 상자'], [res.caught, '잡힌 횟수'], [res.wrong, '틀린 답']]) : ''}
     <p class="lead center">★ 탈출 · ★ 시간을 1/3 넘게 남김 · ★ 사탕 60% 넘게 주움</p>
+    ${S.mode === 'host' ? '<p class="lead center" id="cWait"></p>' : ''}
     <div class="row">${isHost ? '<button class="btn-ink" id="cNext" autofocus>다음 층으로</button>' : '<p class="lead">방장이 다음 층을 시작하기를 기다려요…</p>'}</div>`);
   if (isHost) $('cNext').onclick = () => { closeModal(); launchStage(S.stageIdx + 1); };
+  updateSeen();
+}
+// 방장 화면: 층 사이 만화를 다 본 친구 수(다 보기 전에 시작하면 그 친구의 만화는 닫힌다)
+function updateSeen() {
+  const el = $('cWait'); if (!el || S.mode !== 'host') return;
+  const friends = S.roster.filter(r => r.slot !== S.mySlot && !r.pending), n = friends.filter(r => S.seen?.has(r.slot)).length;
+  if (!friends.length) { el.textContent = ''; return; }
+  el.textContent = n >= friends.length ? '✅ 친구들이 모두 만화를 다 봤어요!' : `📖 친구 ${friends.length}명 중 ${n}명이 만화를 다 봤어요. 지금 시작하면 아직 보는 친구의 만화는 닫혀요.`;
 }
 function showOver(why) {
   toggleNote(false); closeQuiz();
   const isHost = S.mode !== 'client';
   const title = why === 'time' ? '자정의 종이 울렸어요' : '모두 새장에 갇혔어요';
+  if (isHost) saveProgress(S.stageIdx, S.round);
   const again = S.round ? ` 푼 쪽지는 그대로 두고 ${S.round + 1}번째 쪽지부터 이어서 해요.` : ' 다시 하면 쪽지가 새로 숨겨져요.';
   const lead = (why === 'time' ? '시간 안에 탈출문을 열지 못했어요.' : '괴물에게 모두 잡혔어요. 서로 떨어져서 다니고, 잡힌 친구는 바로 구해 주세요.') + again;
   openModal(`<h2>${title}</h2><p class="story">${lead}</p>
@@ -1294,6 +1364,7 @@ $('gradeGrid').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   S.grade = +b.dataset.g; store.set('pumpkin3-grade', S.grade);
   $('modeTitle').textContent = `${S.grade}학년 · 어떻게 놀까요?`;
+  const sv = loadProgress(); $('contBtn').hidden = !sv; if (sv) $('contBtn').textContent = `▶ 이어 하기: ${saveLabel(sv)}`;
   showScreen('mode');
 };
 $('gradeBack').onclick = () => showScreen('title');
@@ -1309,16 +1380,21 @@ costumeRow.onclick = (e) => { const b = e.target.closest('button'); if (!b) retu
 
 // 처음 들어갈 때 도입 만화를 본다(건너뛰기 가능). 방에 들어가는 친구는 방장을 기다리는 동안 본다
 const withIntro = (fn) => async () => { Sound.init(); showScreen(null); Sound.music(false); await playComic('intro'); if (S.mode === 'none') fn(); };
-$('soloBtn').onclick = withIntro(startSolo);
-$('hostBtn').onclick = withIntro(startHost);
+$('soloBtn').onclick = withIntro(() => startSolo());
+// 이어 하기는 도입 만화 없이 바로
+$('contBtn').onclick = () => { const sv = loadProgress(); if (!sv) return; Sound.init(); Sound.music(false); showScreen(null); startSolo(sv); };
+$('hostBtn').onclick = () => { Sound.init(); Sound.music(false); startHost(); playComic('intro').then(() => { if ($('codeBadge')) $('codeBadge').hidden = true; }); };
 $('joinBtn').onclick = () => { Sound.init(); Sound.music(false); startJoin(); playComic('intro'); };
 $('codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
 $('startBtn').onclick = () => {
   if (S.roster.some(r => r.pending)) { $('lobbyStatus').textContent = '들어오는 중인 친구가 있어요. 잠깐만 기다려 주세요.'; return; }
-  launchStage(S.startStage);
+  const sv = S.resume && S.resume.st === S.startStage ? S.resume : null;
+  if (!S.run) newRun();
+  if (sv) S.totals = { ...S.totals, ...sv.totals };
+  launchStage(S.startStage, sv ? sv.rd : 0);
 };
 $('leaveBtn').onclick = () => leaveToTitle();
-$('segStage').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.startStage = +b.dataset.v; broadcastLobby(); };
+$('segStage').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.startStage = +b.dataset.v; if (S.resume && S.resume.st !== S.startStage) { S.resume = null; $('lobbyHint').textContent = '친구에게 이 코드를 알려 주세요. 최대 4명.'; } broadcastLobby(); };
 $('muteBtn').onclick = () => { Sound.setMuted(!Sound.muted); $('muteIcon').textContent = Sound.muted ? '🔇' : '🔊'; };
 $('muteIcon').textContent = Sound.muted ? '🔇' : '🔊';
 $('nameIn').value = S.myName;

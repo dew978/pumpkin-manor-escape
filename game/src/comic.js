@@ -30,6 +30,16 @@ export const COMIC = {
     { img: 'p10', lines: [['호박', '얘들아, 책상 위에 오래된 사진이 있어!']] },
     { img: 'p11', lines: [['마녀', '이 아이… 루미랑 똑같이 생겼어.'], ['', '저 멀리 정원 쪽에서 문이 삐걱 열리는 소리가 들렸다.', 'creak']] },
   ],
+  // 새 층 사이(지하 서고 → 지하 창고, 지하 창고 → 저택 2층, 호박밭 → 묘지 정원)
+  cellar2: [
+    { img: 'p16', lines: [['미라', '책을 하나 당겼더니… 책장이 문처럼 열렸어!'], ['호박', '아래로 계단이 또 있어. 더 깊이 내려가야 하나 봐.'], ['루미', '이 아래는 창고야. 나무통 사이에 쪽지가 또 숨어 있을 거야.']] },
+  ],
+  upstairs: [
+    { img: 'p17', lines: [['흡혈귀', '열쇠 방에서 찾았어. 주황 리본이 달린 열쇠야!'], ['미라', '주황 리본… 루미 리본이랑 똑같은데?'], ['루미', '어, 어서 2층으로 올라가자! 계단은 저쪽이야.']] },
+  ],
+  gate: [
+    { img: 'p18', lines: [['호박', '저기 묘지 정원 문이 보여!'], ['루미', '…자정이 얼마 안 남았어. 이번이 마지막이야.'], ['', '멀리서 종소리가 한 번 울렸다.', 'bell']] },
+  ],
   ending: [
     { img: 'p12', lines: [['루미', '사실… 쪽지를 찢은 건 나야.'], ['루미', '내가 이 집 주인이거든.']] },
     { img: 'p13', lines: [['루미', '백 년 동안 할로윈마다 혼자였어. 같이 놀 친구가 필요했어.'], ['루미', '너희랑 술래잡기한 거, 정말 재밌었어. 고마워.']] },
@@ -37,6 +47,11 @@ export const COMIC = {
     { img: 'p15', lines: [['마녀', '얘들아, 내 주머니에 이게 들어 있어.'], ['', '"내년 할로윈에도 같이 놀자. — 루미"']] },
   ],
 };
+
+// 지금 보이는 만화 닫기(방장이 다음 층을 시작하면 친구 화면의 만화를 닫는다)
+let closeCurrent = null;
+export function closeComic() { closeCurrent?.(); }
+export const comicOpen = () => !!closeCurrent;
 
 // 만화 보여 주기. 끝나거나 건너뛰면 resolve
 export function playComic(key) {
@@ -51,7 +66,7 @@ export function playComic(key) {
     let p = 0, l = 0, done = false;
     // 다음 그림을 미리 받아 둔다
     pages.forEach(pg => { const i = new Image(); i.src = `assets/comic/${pg.img}.jpg`; });
-    const finish = () => { if (done) return; done = true; removeEventListener('keydown', onKey, true); box.classList.add('out'); setTimeout(() => box.remove(), 300); resolve(); };
+    const finish = () => { if (done) return; done = true; if (closeCurrent === finish) closeCurrent = null; removeEventListener('keydown', onKey, true); box.classList.add('out'); setTimeout(() => box.remove(), 300); resolve(); };
     const show = () => {
       const pg = pages[p];
       if (l === 0) { img.src = `assets/comic/${pg.img}.jpg`; img.classList.remove('in'); void img.offsetWidth; img.classList.add('in'); }
@@ -75,6 +90,7 @@ export function playComic(key) {
     box.addEventListener('pointerup', (e) => { if (!e.target.closest('.comic-skip')) next(); });
     box.querySelector('.comic-skip').onclick = finish;
     addEventListener('keydown', onKey, true);
+    closeCurrent?.(); closeCurrent = finish;
     show();
   });
 }

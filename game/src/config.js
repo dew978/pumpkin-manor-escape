@@ -244,7 +244,7 @@ export const CHARACTERS = [
 ];
 
 // 괴물 세기: 'auto'는 학년에 맞춘다(1~4학년 느림, 5~6학년 보통)
-export const DIFF_SPEED = { easy: 0.85, normal: 0.95, hard: 1.08 };
+export const DIFF_SPEED = { easy: 0.85, normal: 0.92, hard: 1.08 };
 export const diffForGrade = (grade, setting) => setting && setting !== 'auto' ? setting : (grade <= 4 ? 'easy' : 'normal');
 
 export const EDGE_COLORS = ['#e8573c', '#3cb4e8', '#8fd14f', '#c47be8', '#f2c230'];

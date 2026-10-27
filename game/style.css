@@ -81,8 +81,8 @@ kbd { font-family: var(--f-num); font-size: 12px; color: var(--dim); border: 1px
 #knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255, 210, 122, .35); border: 2px solid rgba(255, 210, 122, .6); }
 
 /* 쪽지 */
-/* 쪽지 창은 루미 대사창(아래 가운데) 위에 띄운다: 대사창과 겹치지 않게 아래를 --dlg-space만큼 비우고, 위는 감지기 아래까지 */
-#note { --dlg-space: 206px; position: absolute; z-index: 4; left: 50%; bottom: var(--dlg-space); transform: translateX(-50%); width: min(760px, calc(100% - 16px)); max-height: calc(100% - var(--dlg-space) - 118px); overflow-y: auto;
+/* 쪽지 창: 아래 가운데에 뜬다. 루미 대사창이 떠 있으면(#app.dlg-on) 대사창 위로 올라간다. 위는 감지기 아래까지 */
+#note { --dlg-space: 8px; position: absolute; z-index: 4; left: 50%; bottom: var(--dlg-space); transform: translateX(-50%); width: min(760px, calc(100% - 16px)); max-height: calc(100% - var(--dlg-space) - 118px); overflow-y: auto;
   background: var(--paper); color: var(--ink); border-radius: 14px; box-shadow: 0 -10px 40px rgba(0, 0, 0, .6);
   padding: 14px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background-image: repeating-linear-gradient(0deg, transparent 0 31px, rgba(120, 80, 30, .08) 31px 32px); }
@@ -338,9 +338,18 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 #dialog .line { margin: 2px 0 0; font-size: 18px; line-height: 1.5; min-height: 3em; word-break: keep-all; }
 #dialog .next { position: absolute; right: 16px; bottom: 10px; font-size: 14px; color: var(--candle); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-@media (max-width: 760px) { #note { --dlg-space: 266px; } #dialog { width: calc(100% - 24px); min-width: 0; bottom: 150px; } #dialog .face { width: 60px; height: 60px; } #dialog .line { font-size: 16px; } }
+#app.dlg-on #note { --dlg-space: 206px; }
+@media (max-width: 760px) { #app.dlg-on #note { --dlg-space: 266px; } #dialog { width: calc(100% - 24px); min-width: 0; bottom: 150px; } #dialog .face { width: 60px; height: 60px; } #dialog .line { font-size: 16px; } }
 /* 낮은 화면에서는 쪽지 창이 감지기 자리까지 올라가도 된다 */
 @media (max-height: 700px) { #note { max-height: calc(100% - var(--dlg-space) - 64px); } }
+/* 낮은 화면(가로로 든 휴대폰): 쪽지 창은 아래 그대로, 대사창이 위로 비켜 준다 */
+@media (max-height: 560px) { #app.dlg-on #note { --dlg-space: 8px; } #app.note-on #dialog { top: 6px; bottom: auto; } #note { max-height: calc(100% - 16px); } #app.note-on.dlg-on #note { max-height: calc(100% - 120px); } }
+/* 문제 읽어 주기 */
+.read { display: block; margin: 0 0 6px auto; border: 2px solid var(--ink); background: #fff7e6; color: var(--ink); border-radius: 999px; font-size: 15px; padding: 5px 12px; }
+/* 방장이 도입 만화를 보는 동안 띄우는 방 코드 */
+#codeBadge { position: absolute; z-index: 45; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); background: rgba(40, 24, 10, .94); border: 2px solid var(--candle); border-radius: 14px; padding: 6px 16px; color: var(--parchment); font-size: 16px; text-align: center; pointer-events: none; }
+#codeBadge b { font-family: var(--f-num); font-size: 28px; letter-spacing: .18em; color: var(--candle); margin-left: 8px; }
+#codeBadge small { display: block; font-size: 12px; color: var(--dim); }
 @media (prefers-reduced-motion: reduce) { #dialog.in, #dialog .next { animation: none; } }
 
 /* 결과 화면 머리: 제목과 별을 크게 가운데 */

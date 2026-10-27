@@ -135,9 +135,19 @@ export class Sim {
     p.x = x; p.z = z; p.face = face; p.moving = moving;
   }
   removePlayer(slot) { this.players.delete(slot); }
+  // 층이 진행 중일 때 들어온(다시 들어온) 친구: 시작 자리에서 잠깐 무적으로 시작
+  addPlayer(r) {
+    if (this.players.has(r.slot)) return;
+    const x = this.spawn.c, z = this.spawn.r;
+    this.players.set(r.slot, { slot: r.slot, name: r.name, char: r.char, x, z, face: Math.PI, moving: false,
+      hidden: -1, hideT: 0, caged: -1, escaped: false, invuln: 3, item: null, fastT: 0, candy: 0, throwT: 0, peekT: 0, tp: { seq: 1, x, z } });
+    this.solo = false;
+    this.toast(`👋 ${josa(r.name, '이가')} 들어왔어요!`);
+  }
 
   input(slot, m) {
     const p = this.players.get(slot); if (!p || this.phase !== 'play') return;
+    if ((m.t === 'search' || m.t === 'peek') && m.rd != null && m.rd !== this.round) return;   // 앞 쪽지 때 연 가구 문제의 답
     if (m.t === 'hide') this.toggleHide(p);
     else if (m.t === 'use') this.useItem(p);
     else if (m.t === 'arrange') this.arrange(p, m.order);
@@ -332,10 +342,10 @@ export class Sim {
   scatter() {
     const used = [];
     for (const f of this.fragments) {
-      const s = this.freeSpot(used); if (!s) continue;
-      used.push(s); this.placeFrag(f, s);
+      const s = this.freeSpot(used); if (!s) continue;   // 숨길 곳이 없으면 그 조각은 손에 남는다
+      used.push(s); this.placeFrag(f, s); this.pz.have.delete(f.id);
     }
-    this.pz.have.clear(); this.pz.assembled = false;
+    this.pz.assembled = false;
   }
 
   catchPlayer(p, m) {
@@ -350,12 +360,12 @@ export class Sim {
     if (this.diffKey !== 'easy' && !this.pz.assembled && this.pz.have.size > 0 && this.elapsed >= (this.stealAt ?? -99) + 30) {
       this.stealAt = this.elapsed;
       const ids = [...this.pz.have]; const id = ids[Math.floor(this.rand() * ids.length)];
-      this.pz.have.delete(id);
       // 가구마다 문제를 풀어야 하니 너무 먼 곳만 고르지 않는다(남은 꽝 가구 중 아무 곳)
       const far = this.freeSpot();
-      if (far) { far.lockT = 0; this.placeFrag(this.fragments[id], far); }
-      this.stats.stolen++;
-      msg += ` 쪽지 조각 하나를 빼앗겼어요`;
+      if (far) {
+        this.pz.have.delete(id); far.lockT = 0; this.placeFrag(this.fragments[id], far);
+        this.stats.stolen++; msg += ` 쪽지 조각 하나를 빼앗겼어요`;
+      }
     }
     if (p.hidden >= 0) p.hidden = -1;
     if (this.solo) {

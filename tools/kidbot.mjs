@@ -2,7 +2,7 @@
 // 루미의 방 힌트(가장 가까운 쪽지가 있는 방)로 가서 그 방 가구를 가까운 것부터 뒤진다.
 // 가구마다 문제를 4~8초 동안 읽고 75%로 맞힌다(틀려서 잠긴 가구는 건너뜀).
 // 감지기가 '뜨거워'(쪽지 4칸 안)면 그 근처 가구부터. 괴물이 쫓아오면 문제를 버리고 반대쪽으로 도망친다(0.6초 늦게 알아챔).
-// 쪽지를 다 모으면 그 자리에서 8초 동안 이어 붙이고, 문제를 12초 읽고 70%로 맞힌다(틀리면 조각이 흩어져 다시 모음). 쪽지가 더 남았으면 다시 찾는다.
+// 쪽지를 다 모으면 그 자리에서 8초 동안 이어 붙이고, 문제를 12초 읽고 70%로 맞힌다(틀리면 조각이 흩어져 다시 모으고, 다음엔 85%, 그다음엔 꼭 맞힘). 쪽지가 더 남았으면 다시 찾는다.
 // node tools/kidbot.mjs   (game/src를 그대로 쓴다)
 import { Sim } from '../game/src/sim.js';
 import { PLAYER_SPEED, STAGES, roomName } from '../game/src/config.js';
@@ -72,7 +72,8 @@ function play(stageIdx, diff, seed, grade) {
     } else if (me.stage === 'arrange') { sim.input(0, { t: 'arrange', order: [0, 1, 2, 3] }); me.stage = 'read'; me.wait = 12; }
     else if (me.stage === 'read') {
       // 쪽지 문제는 70%로 맞힌다. 틀리면 조각이 흩어져 다시 모은다
-      const ok = Math.random() < 0.7; sim.input(0, { t: 'answer', v: ok ? sim.puzzle.answer : '틀린답' });
+      // 고른 오답은 다시 못 고르고 힌트도 보이니 다시 풀수록 잘 맞힌다(70% → 85% → 100%)
+      const ok = Math.random() < [0.7, 0.85, 1][Math.min(2, sim.pz.wrong)]; sim.input(0, { t: 'answer', v: ok ? sim.puzzle.answer : '틀린답' });
       if (!ok) me.scattered = (me.scattered || 0) + 1;
       me.stage = sim.pz.open ? 'exit' : 'collect';
     }
