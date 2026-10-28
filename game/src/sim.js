@@ -1,7 +1,7 @@
 // 방장 기기에서만 도는 판정: 괴물 AI, 잡기·새장·구출, 숨기, 쪽지 조각, 퍼즐, 시간.
 // 학생 위치는 각 기기가 보내 준 값을 그대로 믿는다(교실용이라 부정행위 방지는 하지 않음).
 import { STAGES, MONSTERS, PLAYER_SPEED, DIFF_SPEED, CANDY_PER_FLOOR, monsterSpots, SEARCHABLE, SEARCH_CODES, SEARCH_SPOTS, SEARCH_LOCK } from './config.js';
-import { josa } from './util.js';
+import { josa, T } from './util.js';
 import { parseMap, tileOf, dist, bfs, lineOfSight, slideMove, followPath, angleDiff, rng } from './grid.js';
 
 const ITEM_CODES = ['time', 'crystal', 'potion'];
@@ -117,7 +117,7 @@ export class Sim {
     for (const o of this.players.values()) { o.invuln = Math.max(o.invuln, 3); o.peekT = 0; }
     this.snd('paper', p.x, p.z);
     this.ev({ k: 'note', rd: this.round, name: p.name });
-    this.toast(`📜 ${josa(p.name, '이가')} 정답! 그런데 쪽지가 ${this.notes - this.round}장 더 남았어요. 다른 가구에 새 쪽지가 숨겨졌어요`);
+    this.toast(T(`📜 ${josa(p.name, '이가')} 정답! 그런데 쪽지가 ${this.notes - this.round}장 더 남았어요. 다른 가구에 새 쪽지가 숨겨졌어요`, `📜 ${p.name} got it right! But ${this.notes - this.round} more note(s) to go. A new note is hidden in other furniture`));
   }
 
   d2(a, b) { return (a.c - b.c) ** 2 + (a.r - b.r) ** 2; }
@@ -142,7 +142,7 @@ export class Sim {
     this.players.set(r.slot, { slot: r.slot, name: r.name, char: r.char, x, z, face: Math.PI, moving: false,
       hidden: -1, hideT: 0, caged: -1, escaped: false, invuln: 3, item: null, fastT: 0, candy: 0, throwT: 0, peekT: 0, tp: { seq: 1, x, z } });
     this.solo = false;
-    this.toast(`👋 ${josa(r.name, '이가')} 들어왔어요!`);
+    this.toast(T(`👋 ${josa(r.name, '이가')} 들어왔어요!`, `👋 ${r.name} joined!`));
   }
 
   input(slot, m) {
@@ -177,10 +177,10 @@ export class Sim {
     if (it === 'crystal') {
       let n = 0;
       for (const m of this.monsters) if (dist(m, p) < 8) { m.blindT = 6; m.state = 'patrol'; m.path = []; m.target = -1; n++; }
-      this.snd('pickup', p.x, p.z); this.toast(n ? `🔮 수정구가 번쩍! 괴물 ${n}마리가 6초 동안 앞을 못 봐요` : '🔮 수정구가 번쩍! 근처엔 괴물이 없었어요', p.slot);
+      this.snd('pickup', p.x, p.z); this.toast(n ? T(`🔮 수정구가 번쩍! 괴물 ${n}마리가 6초 동안 앞을 못 봐요`, `🔮 Flash! ${n} monster(s) can't see for 6 seconds`) : T('🔮 수정구가 번쩍! 근처엔 괴물이 없었어요', '🔮 Flash! But no monsters were nearby'), p.slot);
       this.ev({ k: 'flash', x: p.x, z: p.z });
     } else if (it === 'potion') {
-      p.fastT = 5; this.toast('🧪 날쌘 물약! 5초 동안 빨라져요', p.slot); this.snd('pickup', p.x, p.z);
+      p.fastT = 5; this.toast(T('🧪 날쌘 물약! 5초 동안 빨라져요', '🧪 Speed potion! You are faster for 5 seconds'), p.slot); this.snd('pickup', p.x, p.z);
     }
   }
 
@@ -195,19 +195,19 @@ export class Sim {
     const s = this.spots[id];
     if (!s || s.searched || s.lockT > 0 || p.caged >= 0 || p.escaped || p.hidden >= 0 || Math.hypot(s.c - p.x, s.r - p.z) > 2.4) return;
     p.peekT = 0;
-    const [icon, name] = SEARCHABLE[s.ch] || ['🔍', '가구'];
+    const [icon, name] = SEARCHABLE[s.ch] || ['🔍', T('가구', 'furniture')];
     if (!ok && s.frag >= 0) {
       const f = this.fragments[s.frag], to = this.freeSpot([s]);
       if (to) {
         s.frag = -1; this.placeFrag(f, to); this.snd('paper', s.c, s.r, p.slot);
         this.ev({ k: 'fragMoved', slot: p.slot, spot: id });
-        this.toast(`📜 앗! ${name} 속 쪽지 조각이 휙 날아가 다른 ? 가구로 숨었어요. 감지기를 봐요!`, p.slot);
+        this.toast(T(`📜 앗! ${name} 속 쪽지 조각이 휙 날아가 다른 ? 가구로 숨었어요. 감지기를 봐요!`, `📜 Oops! The note piece in the ${name} flew off and hid in another ? spot. Check the detector!`), p.slot);
         return;
       }
     }
     if (!ok) {
       s.lockT = SEARCH_LOCK; this.snd('cage', s.c, s.r, p.slot);
-      this.toast(`🔒 ${josa(name, '이가')} ${SEARCH_LOCK}초 동안 잠겼어요. 다시 오면 다른 문제가 나와요`, p.slot);
+      this.toast(T(`🔒 ${josa(name, '이가')} ${SEARCH_LOCK}초 동안 잠겼어요. 다시 오면 다른 문제가 나와요`, `🔒 The ${name} is locked for ${SEARCH_LOCK} seconds. Come back for a different question`), p.slot);
       return;
     }
     s.searched = true;
@@ -219,11 +219,12 @@ export class Sim {
       return;
     }
     const roll = this.rand();
-    if (roll < 0.5) { p.candy++; this.snd('pickup', p.x, p.z, p.slot); this.toast(`${icon} ${name}에서 사탕 1개를 찾았어요! 쪽지는 없었어요`, p.slot); }
-    else if (roll < 0.75) { this.time += 10; this.snd('pickup', p.x, p.z, p.slot); this.toast(`${icon} ${name} 속에 반짝이는 모래가… 시간 +10초! 쪽지는 없었어요`, p.slot); }
+    if (roll < 0.5) { p.candy++; this.snd('pickup', p.x, p.z, p.slot); this.toast(T(`${icon} ${name}에서 사탕 1개를 찾았어요! 쪽지는 없었어요`, `${icon} You found 1 candy in the ${name}! No note here`), p.slot); }
+    else if (roll < 0.75) { this.time += 10; this.snd('pickup', p.x, p.z, p.slot); this.toast(T(`${icon} ${name} 속에 반짝이는 모래가… 시간 +10초! 쪽지는 없었어요`, `${icon} Sparkling sand in the ${name}… Time +10 s! No note here`), p.slot); }
     else {
-      const jokes = [`${name}에는 거미줄뿐이에요`, `${name}에는 먼지만 가득해요`, `${name}에는 낡은 양말 한 짝뿐이에요`, `${name} 뒤에서 박쥐가 푸드덕 날아갔어요`];
-      this.snd('paper', p.x, p.z, p.slot); this.toast(`${icon} ${jokes[Math.floor(this.rand() * jokes.length)]}. 다른 곳을 찾아봐요`, p.slot);
+      const jokes = T([`${name}에는 거미줄뿐이에요`, `${name}에는 먼지만 가득해요`, `${name}에는 낡은 양말 한 짝뿐이에요`, `${name} 뒤에서 박쥐가 푸드덕 날아갔어요`],
+        [`Only cobwebs in the ${name}`, `The ${name} is full of dust`, `Just one old sock in the ${name}`, `A bat flapped out from behind the ${name}`]);
+      this.snd('paper', p.x, p.z, p.slot); this.toast(`${icon} ${jokes[Math.floor(this.rand() * jokes.length)]}. ${T('다른 곳을 찾아봐요', 'Try somewhere else')}`, p.slot);
     }
     this.ev({ k: 'searched', slot: p.slot, spot: id });
   }
@@ -232,11 +233,13 @@ export class Sim {
   takeItem(p, id) {
     const it = this.items[id];
     if (!it || it.taken || p.caged >= 0 || p.escaped || p.hidden >= 0 || Math.hypot(it.x - p.x, it.z - p.z) > 1.4) return;
-    if (it.type === 'time') { it.taken = true; this.time += 30; this.snd('pickup', p.x, p.z); this.toast(`⏳ ${josa(p.name, '이가')} 모래시계를 주웠어요! 시간 +30초`); return; }
+    if (it.type === 'time') { it.taken = true; this.time += 30; this.snd('pickup', p.x, p.z); this.toast(T(`⏳ ${josa(p.name, '이가')} 모래시계를 주웠어요! 시간 +30초`, `⏳ ${p.name} picked up an hourglass! Time +30 s`)); return; }
     const old = p.item; p.item = it.type; this.snd('pickup', p.x, p.z, p.slot);
     if (old) it.type = old; else it.taken = true;
-    this.toast(p.item === 'crystal' ? `🔮 수정구를 주웠어요${old ? ` (${old === 'potion' ? '날쌘 물약' : '수정구'}은 내려놓았어요)` : ''}. 쓰면 가까운 괴물이 6초 동안 앞을 못 봐요`
-      : `🧪 날쌘 물약을 주웠어요${old ? ` (${old === 'crystal' ? '수정구' : '날쌘 물약'}는 내려놓았어요)` : ''}. 쓰면 5초 동안 빨라져요`, p.slot);
+    this.toast(T(p.item === 'crystal' ? `🔮 수정구를 주웠어요${old ? ` (${old === 'potion' ? '날쌘 물약' : '수정구'}은 내려놓았어요)` : ''}. 쓰면 가까운 괴물이 6초 동안 앞을 못 봐요`
+      : `🧪 날쌘 물약을 주웠어요${old ? ` (${old === 'crystal' ? '수정구' : '날쌘 물약'}는 내려놓았어요)` : ''}. 쓰면 5초 동안 빨라져요`,
+    p.item === 'crystal' ? `🔮 You picked up a crystal ball${old ? ` (dropped the ${old === 'potion' ? 'speed potion' : 'crystal ball'})` : ''}. Use it to blind nearby monsters for 6 seconds`
+      : `🧪 You picked up a speed potion${old ? ` (dropped the ${old === 'crystal' ? 'crystal ball' : 'speed potion'})` : ''}. Use it to run faster for 5 seconds`), p.slot);
   }
 
   // 사탕 던지기: 겨눈 곳(최대 THROW_RANGE칸)으로 날아간다
@@ -270,9 +273,9 @@ export class Sim {
       m.state = 'lured'; m.lure = L.id; m.path = []; m.repathT = 0; m.target = -1; m.sawHide = -1; m.restT = 0; n++;
     }
     this.snd('pickup', L.x, L.z);
-    let msg = n ? `🍬 괴물 ${n}마리가 사탕 냄새를 맡았어요! 지금 피해요` : tired.length ? '🍬 사탕을 던졌어요' : '🍬 사탕을 던졌어요. 근처에는 괴물이 없었어요';
-    if (last.length) msg += ` · ${josa([...new Set(last)].join(', '), '은는')} 이번이 마지막이에요`;
-    if (tired.length) msg += ` · ${josa([...new Set(tired)].join(', '), '은는')} 사탕에 질려서 이제 안 속아요!`;
+    let msg = n ? T(`🍬 괴물 ${n}마리가 사탕 냄새를 맡았어요! 지금 피해요`, `🍬 ${n} monster(s) smelled the candy! Get away now`) : tired.length ? T('🍬 사탕을 던졌어요', '🍬 You threw candy') : T('🍬 사탕을 던졌어요. 근처에는 괴물이 없었어요', '🍬 You threw candy. No monsters were nearby');
+    if (last.length) msg += T(` · ${josa([...new Set(last)].join(', '), '은는')} 이번이 마지막이에요`, ` · Last time for ${[...new Set(last)].join(', ')}`);
+    if (tired.length) msg += T(` · ${josa([...new Set(tired)].join(', '), '은는')} 사탕에 질려서 이제 안 속아요!`, ` · ${[...new Set(tired)].join(', ')} got tired of candy and won't fall for it anymore!`);
     this.toast(msg, L.by);
   }
 
@@ -314,7 +317,7 @@ export class Sim {
     if (this.pz.assembled || this.pz.have.size < this.puzzle.parts.length) return;
     if (Array.isArray(order) && order.length === this.puzzle.parts.length && order.every((v, i) => v === i)) {
       this.pz.assembled = true; this.snd('paper', p.x, p.z);
-      this.toast(`📜 ${josa(p.name, '이가')} 쪽지를 맞췄어요! 이제 문제를 풀어요`);
+      this.toast(T(`📜 ${josa(p.name, '이가')} 쪽지를 맞췄어요! 이제 문제를 풀어요`, `📜 ${p.name} put the note together! Now solve the question`));
     } else this.ev({ k: 'arrangeWrong', slot: p.slot });
   }
 
@@ -329,12 +332,12 @@ export class Sim {
       // 문이 열리는 장면(약 3초) 동안은 아무도 잡히지 않는다
       for (const o of this.players.values()) o.invuln = Math.max(o.invuln, 4);
       this.ev({ k: 'open', name: p.name }); this.snd('gate', this.exitTiles[0].c, this.exitTiles[0].r);
-      this.toast(`🚪 ${josa(p.name, '이가')} 정답! 탈출문이 열렸어요. 북쪽 문으로 달려요!`);
+      this.toast(T(`🚪 ${josa(p.name, '이가')} 정답! 탈출문이 열렸어요. 북쪽 문으로 달려요!`, `🚪 ${p.name} got it right! The exit is open. Run to the north door!`));
     } else {
       this.pz.wrong++; this.stats.wrong++;
       this.scatter();
       this.ev({ k: 'answerWrong', slot: p.slot, v });
-      this.toast(`❌ "${v}"은(는) 정답이 아니에요. 쪽지가 찢어져 ? 가구들로 다시 흩어졌어요! 다시 모아서 붙여요`);
+      this.toast(T(`❌ "${v}"은(는) 정답이 아니에요. 쪽지가 찢어져 ? 가구들로 다시 흩어졌어요! 다시 모아서 붙여요`, `❌ "${v}" is not the answer. The note tore apart and scattered into the ? spots! Collect it and put it together again`));
     }
   }
 
@@ -353,7 +356,7 @@ export class Sim {
     this.snd('caught', p.x, p.z);
     // 잡은 괴물은 그 자리를 떠난다(같은 곳에서 계속 잡히지 않게)
     m.state = 'rest'; m.restT = 2; m.path = []; m.target = -1; m.sawHide = -1; m.ignoreT = 8;
-    let msg = `💀 ${josa(p.name, '이가')} ${m.spec.name}에게 잡혔어요!`;
+    let msg = T(`💀 ${josa(p.name, '이가')} ${m.spec.name}에게 잡혔어요!`, `💀 ${p.name} was caught by ${m.spec.name}!`);
     // 확실한 불이익 1: 모은 쪽지 하나를 빼앗겨 다시 숨겨진다
     // (느림에서는 빼앗지 않는다: 저학년이 다시 찾느라 지치지 않게)
     // 한 번 빼앗기면 30초 동안은 다시 빼앗기지 않는다(쪽지가 여러 장이라 연달아 잃으면 끝이 안 난다)
@@ -364,19 +367,19 @@ export class Sim {
       const far = this.freeSpot();
       if (far) {
         this.pz.have.delete(id); far.lockT = 0; this.placeFrag(this.fragments[id], far);
-        this.stats.stolen++; msg += ` 쪽지 조각 하나를 빼앗겼어요`;
+        this.stats.stolen++; msg += T(` 쪽지 조각 하나를 빼앗겼어요`, ` A note piece was stolen.`);
       }
     }
     if (p.hidden >= 0) p.hidden = -1;
     if (this.solo) {
       // 혼자일 때 불이익 2: 시작 위치로, 시간 −10초
       this.time -= 10; p.invuln = 3; this.teleport(p, this.spawn.c, this.spawn.r);
-      msg += ' 처음 자리로 돌아가요 · 시간 −10초';
+      msg += T(' 처음 자리로 돌아가요 · 시간 −10초', ' Back to the start · Time −10 s');
     } else {
       // 협동일 때 불이익 2: 새장에 갇힌다. 친구가 새장 옆에 1.5초 서 있으면 풀려난다
       const cg = this.cages[0];
       p.caged = 0; this.teleport(p, cg.c, cg.r); this.snd('cage', cg.c, cg.r);
-      msg += ' 새장에 갇혔어요. 친구가 구해 줘야 해요!';
+      msg += T(' 새장에 갇혔어요. 친구가 구해 줘야 해요!', ' Locked in the ghost cage. A friend has to rescue you!');
       const free = [...this.players.values()].filter(o => o.caged < 0 && !o.escaped);
       if (!free.length) this.gameOver('caught');
     }
@@ -388,12 +391,12 @@ export class Sim {
     const ch = this.chests[id]; if (!ch || ch.opened || p.caged >= 0 || p.escaped) return;
     if (Math.hypot(ch.c - p.x, ch.r - p.z) > 1.9) return;
     ch.opened = true;
-    if (!ok) { this.toast('🎃 상자가 "땡!" 하고 잠겼어요. 다른 상자를 찾아봐요', p.slot); this.snd('cage', ch.c, ch.r, p.slot); return; }
+    if (!ok) { this.toast(T('🎃 상자가 "땡!" 하고 잠겼어요. 다른 상자를 찾아봐요', '🎃 "Bzzt!" The box locked. Find another box'), p.slot); this.snd('cage', ch.c, ch.r, p.slot); return; }
     this.stats.chestOk++; this.snd('pickup', ch.c, ch.r);
     if (!p.item) {
       p.item = this.rand() < 0.5 ? 'crystal' : 'potion';
-      this.toast(p.item === 'crystal' ? '🎃 정답! 상자에서 🔮 수정구가 나왔어요 (Q로 쓰기)' : '🎃 정답! 상자에서 🧪 날쌘 물약이 나왔어요 (Q로 쓰기)', p.slot);
-    } else { this.time += 20; this.toast(`🎃 ${josa(p.name, '이가')} 상자 문제를 맞혔어요! 시간 +20초`); }
+      this.toast(p.item === 'crystal' ? T('🎃 정답! 상자에서 🔮 수정구가 나왔어요 (Q로 쓰기)', '🎃 Correct! A 🔮 crystal ball came out of the box (Q to use)') : T('🎃 정답! 상자에서 🧪 날쌘 물약이 나왔어요 (Q로 쓰기)', '🎃 Correct! A 🧪 speed potion came out of the box (Q to use)'), p.slot);
+    } else { this.time += 20; this.toast(T(`🎃 ${josa(p.name, '이가')} 상자 문제를 맞혔어요! 시간 +20초`, `🎃 ${p.name} solved a box question! Time +20 s`)); }
   }
 
   gameOver(reason) { if (this.phase !== 'play') return; this.phase = 'over'; this.overReason = reason; this.snd('bell', 0, 0); }
@@ -530,7 +533,7 @@ export class Sim {
       m.chaseT = (m.state === 'chase' ? m.chaseT : 0) + dt;
       if (m.chaseT > 8) { m.state = 'patrol'; m.ignoreT = 8; m.wp = null; return; }   // 박쥐도 지친다
       m.target = seen.slot; m.state = 'chase'; m.lastSeen = { x: seen.x, z: seen.z };
-      if (m.shoutT <= 0) { m.shoutT = 4.5; this.snd('screech', m.x, m.z); this.alertOthers(m, seen.x, seen.z); this.toast(`🦇 ${s.name}가 소리쳐 괴물들을 부르고 있어요!`, seen.slot); }
+      if (m.shoutT <= 0) { m.shoutT = 4.5; this.snd('screech', m.x, m.z); this.alertOthers(m, seen.x, seen.z); this.toast(T(`🦇 ${s.name}가 소리쳐 괴물들을 부르고 있어요!`, `🦇 ${s.name} is screeching to call the other monsters!`), seen.slot); }
       const dx = seen.x - m.x, dz = seen.z - m.z, l = Math.hypot(dx, dz) || 1;
       if (l > 1.6) { m.x += dx / l * s.run * dt; m.z += dz / l * s.run * dt; }
       m.face = Math.atan2(dx, dz);
@@ -587,18 +590,18 @@ export class Sim {
       if (p.peekT > 0) p.peekT = p.moving || p.caged >= 0 ? 0 : p.peekT - dt;
       if (p.hidden >= 0) {
         p.hideT += dt;
-        if (p.hideT > 12) { p.hidden = -1; p.invuln = 0.8; this.toast('옷장 안이 너무 답답해요! 밖으로 나왔어요', p.slot); this.snd('door_open', p.x, p.z); }
-        else if (p.hideT > 9 && p.hideT - dt <= 9) this.toast('옷장에 오래 있을 수 없어요. 3초 뒤에 나가요', p.slot);
+        if (p.hideT > 12) { p.hidden = -1; p.invuln = 0.8; this.toast(T('옷장 안이 너무 답답해요! 밖으로 나왔어요', 'It got too stuffy in the wardrobe! You climbed out'), p.slot); this.snd('door_open', p.x, p.z); }
+        else if (p.hideT > 9 && p.hideT - dt <= 9) this.toast(T('옷장에 오래 있을 수 없어요. 3초 뒤에 나가요', "You can't stay in the wardrobe long. Out in 3 seconds"), p.slot);
       }
       if (p.caged >= 0 || p.escaped || p.hidden >= 0) continue;
       // 줍기
       for (const cd of this.candies) if (!cd.taken && Math.hypot(cd.x - p.x, cd.z - p.z) < 0.8) {
         cd.taken = true; this.stats.candy++; p.candy++; this.snd('pickup', p.x, p.z, p.slot);
-        if (!this.candyTip.has(p.slot)) { this.candyTip.add(p.slot); this.toast('🍬 사탕을 주웠어요! 오른쪽 아래 사탕 단추로 던지면 괴물이 사탕을 먹으러 가요', p.slot); }
+        if (!this.candyTip.has(p.slot)) { this.candyTip.add(p.slot); this.toast(T('🍬 사탕을 주웠어요! 오른쪽 아래 사탕 단추로 던지면 괴물이 사탕을 먹으러 가요', '🍬 You picked up candy! Throw it with the candy button (bottom right) and monsters will go eat it'), p.slot); }
       }
       // 탈출
       if (this.pz.open && this.exitTiles.some(t => Math.hypot(t.c - p.x, t.r - p.z) < 1.0)) {
-        p.escaped = true; this.snd('pickup', p.x, p.z); this.toast(`✨ ${p.name} 탈출!`);
+        p.escaped = true; this.snd('pickup', p.x, p.z); this.toast(T(`✨ ${p.name} 탈출!`, `✨ ${p.name} escaped!`));
       }
     }
     // 구출: 갇히지 않은 친구가 새장 옆에 1.5초
@@ -614,7 +617,7 @@ export class Sim {
             const out = [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1]].map(([dc, dr]) => ({ c: cg.c + dc, r: cg.r + dr })).filter(t => !this.g.solid(t.c, t.r));
             const t = out[p.slot % out.length] || out[0]; this.teleport(p, t.c, t.r);
           }
-          this.toast(`🔓 ${josa(helper.name, '이가')} ${josa(caged.map(p => p.name).join(', '), '을를')} 구했어요!`);
+          this.toast(T(`🔓 ${josa(helper.name, '이가')} ${josa(caged.map(p => p.name).join(', '), '을를')} 구했어요!`, `🔓 ${helper.name} rescued ${caged.map(p => p.name).join(', ')}!`));
         }
       } else cg.rescueT = Math.max(0, cg.rescueT - dt * 2);
     });

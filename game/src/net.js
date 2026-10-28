@@ -1,6 +1,8 @@
 // 협동 연결(WebRTC, PeerJS). 방파제 포격대와 같은 방식.
 // 방장이 방 코드를 이름으로 한 문을 열고 친구들은 그 코드로 들어온다. 서로를 찾을 때만 PeerJS 공개 중개 서버를 거치고,
 // 게임 데이터는 기기끼리 직접 오간다. 방장 기기가 괴물·시간·쪽지를 계산하고 친구 기기는 받아서 그린다.
+import { T } from './util.js';
+
 const PEER_JS = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const PREFIX = 'pumpkin-escape-';
 export const MAX_PLAYERS = 4;
@@ -10,7 +12,7 @@ function loadPeer() {
   if (window.Peer) return Promise.resolve();
   return (loading ??= new Promise((res, rej) => {
     const s = document.createElement('script'); s.src = PEER_JS;
-    s.onload = res; s.onerror = () => { loading = null; rej(new Error('PeerJS를 불러오지 못했어요(인터넷 연결 확인)')); };
+    s.onload = res; s.onerror = () => { loading = null; rej(new Error(T('PeerJS를 불러오지 못했어요(인터넷 연결 확인)', 'Could not load PeerJS (check the internet connection)'))); };
     document.head.appendChild(s);
   }));
 }

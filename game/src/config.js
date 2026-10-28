@@ -25,11 +25,13 @@ function withDoors(rows, doorRows) {
     const a = row.split(''); a[12] = '.'; a[23] = '.'; return a.join('');
   });
 }
+import { T, LANG } from './util.js';
+
 const DOORS = [9, 10, 11, 19, 20, 21];
 
 export const STAGES = [
   {
-    id: 1, name: '저택 1층', sub: '현관 · 도서관 · 식당', style: 'manor', time: 480,
+    id: 1, name: T('저택 1층', 'Mansion 1F'), sub: T('현관 · 도서관 · 식당', 'Hall · Library · Dining room'), style: 'manor', time: 480,
     fog: 0x150c20, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -60,7 +62,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 2, name: '지하 서고', sub: '책장 미로 · 해골 기사', style: 'cellar', time: 480,
+    id: 2, name: T('지하 서고', 'Underground Library'), sub: T('책장 미로 · 해골 기사', 'Bookshelf maze · Skeleton knights'), style: 'cellar', time: 480,
     fog: 0x0b0f18, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -91,7 +93,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 3, name: '지하 창고', sub: '나무통 미로 · 거미 둥지', style: 'cellar', time: 480,
+    id: 3, name: T('지하 창고', 'Cellar'), sub: T('나무통 미로 · 거미 둥지', 'Barrel maze · Spider nest'), style: 'cellar', time: 480,
     fog: 0x0d0b10, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -122,7 +124,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 4, name: '저택 2층', sub: '침실 · 인형 방 · 서재', style: 'manor', time: 480,
+    id: 4, name: T('저택 2층', 'Mansion 2F'), sub: T('침실 · 인형 방 · 서재', 'Bedroom · Doll room · Study'), style: 'manor', time: 480,
     fog: 0x170b1c, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -153,7 +155,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 5, name: '호박밭', sub: '허수아비 마당 · 덩굴 미로', style: 'garden', time: 480,
+    id: 5, name: T('호박밭', 'Pumpkin Patch'), sub: T('허수아비 마당 · 덩굴 미로', 'Scarecrow yard · Vine maze'), style: 'garden', time: 480,
     fog: 0x10140c, ambient: 0.06,
     map: withDoors([
       TOP,
@@ -184,7 +186,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 6, name: '묘지 정원', sub: '안개 낀 묘지 · 까마귀 박사 · 마지막 층', style: 'garden', time: 480,
+    id: 6, name: T('묘지 정원', 'Graveyard Garden'), sub: T('안개 낀 묘지 · 까마귀 박사 · 마지막 층', 'Foggy graveyard · Doctor Crow · Final floor'), style: 'garden', time: 480,
     fog: 0x0c1612, ambient: 0.06,
     map: withDoors([
       TOP,
@@ -222,25 +224,25 @@ export const SOLID = new Set(['#', 'E', 'H', 'X', 'L', 'B', 'Q', 'T', 'h', 'R', 
 // 초등학생이 태블릿 조이스틱으로 피할 수 있게(2026-10-27 점검): 쫓는 속도는 학생보다 느리고, 오래 쫓아도 학생 속도를 넘지 않는다.
 export const PLAYER_SPEED = 3.4;
 export const MONSTERS = {
-  r: { kind: 'reaper', name: '저승사자', model: 'reaper', h: 2.1, walk: 1.4, run: 2.8, accel: 0.02, sight: 6, fov: 1.3, hear: 1.8, float: 0.12, catches: true },
-  d: { kind: 'plague', name: '까마귀 박사', model: 'plague', h: 1.95, walk: 1.3, run: 2.7, accel: 0.02, sight: 7, fov: 1.05, hear: 1.6, float: 0, catches: true },
-  k: { kind: 'knight', name: '해골 기사', model: 'knight', h: 2.0, walk: 1.2, run: 2.3, accel: 0.015, sight: 5.5, fov: 1.7, hear: 1.3, float: 0, catches: true, shout: true },
-  v: { kind: 'bat', name: '박쥐 악마', model: 'bat', h: 1.3, walk: 1.6, run: 2.4, accel: 0, sight: 4.5, fov: 6.3, hear: 0, float: 1.3, catches: false, flies: true, shout: true },
-  x: { kind: 'spider', name: '거미', model: 'spider', h: 0.9, walk: 1.2, run: 4.0, accel: 0, sight: 3.8, fov: 2.2, hear: 1.0, float: 0, catches: true, lunge: true },
+  r: { kind: 'reaper', name: T('저승사자', 'the Reaper'), model: 'reaper', h: 2.1, walk: 1.4, run: 2.8, accel: 0.02, sight: 6, fov: 1.3, hear: 1.8, float: 0.12, catches: true },
+  d: { kind: 'plague', name: T('까마귀 박사', 'Doctor Crow'), model: 'plague', h: 1.95, walk: 1.3, run: 2.7, accel: 0.02, sight: 7, fov: 1.05, hear: 1.6, float: 0, catches: true },
+  k: { kind: 'knight', name: T('해골 기사', 'the Skeleton Knight'), model: 'knight', h: 2.0, walk: 1.2, run: 2.3, accel: 0.015, sight: 5.5, fov: 1.7, hear: 1.3, float: 0, catches: true, shout: true },
+  v: { kind: 'bat', name: T('박쥐 악마', 'the Bat Demon'), model: 'bat', h: 1.3, walk: 1.6, run: 2.4, accel: 0, sight: 4.5, fov: 6.3, hear: 0, float: 1.3, catches: false, flies: true, shout: true },
+  x: { kind: 'spider', name: T('거미', 'the Spider'), model: 'spider', h: 0.9, walk: 1.2, run: 4.0, accel: 0, sight: 3.8, fov: 2.2, hear: 1.0, float: 0, catches: true, lunge: true },
 };
 
 export const ITEMS = {
-  time: { name: '모래시계', model: 'hourglass', desc: '시간 +30초' },
-  crystal: { name: '수정구', model: 'crystal', desc: '가까운 괴물 6초 동안 눈멂' },
-  potion: { name: '날쌘 물약', model: 'potion', desc: '5초 동안 빨라짐' },
+  time: { name: T('모래시계', 'Hourglass'), model: 'hourglass', desc: T('시간 +30초', 'Time +30 s') },
+  crystal: { name: T('수정구', 'Crystal Ball'), model: 'crystal', desc: T('가까운 괴물 6초 동안 눈멂', 'Blinds nearby monsters for 6 s') },
+  potion: { name: T('날쌘 물약', 'Speed Potion'), model: 'potion', desc: T('5초 동안 빨라짐', 'Faster for 5 s') },
 };
 
 // 분장한 아이들(뼈대·동작 모델 kid). 모델이 없으면 예전 정지 모델(model)로 대신한다
 export const CHARACTERS = [
-  { kid: 'witch_sd', model: 'girl', costume: '마녀', color: '#b07cff', face: 'assets/faces/witch.jpg' },
-  { kid: 'vampire_sd', model: 'boy', costume: '흡혈귀', color: '#ff5a6b', face: 'assets/faces/vampire.jpg' },
-  { kid: 'pumpkin_sd', model: 'redhood', costume: '호박', color: '#ff9a3a', face: 'assets/faces/pumpkin.jpg' },
-  { kid: 'mummy_sd', model: 'tealgirl', costume: '미라', color: '#7fe0c8', face: 'assets/faces/mummy.jpg' },
+  { kid: 'witch_sd', model: 'girl', costume: T('마녀', 'Witch'), color: '#b07cff', face: 'assets/faces/witch.jpg' },
+  { kid: 'vampire_sd', model: 'boy', costume: T('흡혈귀', 'Vampire'), color: '#ff5a6b', face: 'assets/faces/vampire.jpg' },
+  { kid: 'pumpkin_sd', model: 'redhood', costume: T('호박', 'Pumpkin'), color: '#ff9a3a', face: 'assets/faces/pumpkin.jpg' },
+  { kid: 'mummy_sd', model: 'tealgirl', costume: T('미라', 'Mummy'), color: '#7fe0c8', face: 'assets/faces/mummy.jpg' },
 ];
 
 // 괴물 세기: 'auto'는 학년에 맞춘다(1~4학년 느림, 5~6학년 보통)
@@ -258,8 +260,8 @@ export const SEARCH_SPOTS = 10;
 export const SEARCH_LOCK = 6;    // 가구 문제를 틀리면 그 가구가 잠기는 시간(초). 다시 오면 다른 문제가 나온다
 export const CHEST_N = 5;         // 층마다 호박 상자 문제 수(나머지 묶음은 가구 문제)
 export const SEARCHABLE = {
-  B: ['📚', '책장'], Q: ['🍽️', '식탁'], T: ['🧰', '작업대'], b: ['🛢️', '나무통'], R: ['👑', '왕좌'], o: ['🦉', '부엉이상'], h: ['🪑', '의자'],
-  g: ['🪦', '묘비'], t: ['🌳', '나무'], s: ['🎃', '허수아비'], w: ['🪣', '우물'],
+  B: ['📚', T('책장', 'bookshelf')], Q: ['🍽️', T('식탁', 'dining table')], T: ['🧰', T('작업대', 'workbench')], b: ['🛢️', T('나무통', 'barrel')], R: ['👑', T('왕좌', 'throne')], o: ['🦉', T('부엉이상', 'owl statue')], h: ['🪑', T('의자', 'chair')],
+  g: ['🪦', T('묘비', 'gravestone')], t: ['🌳', T('나무', 'tree')], s: ['🎃', T('허수아비', 'scarecrow')], w: ['🪣', T('우물', 'well')],
 };
 export const SEARCH_CODES = Object.keys(SEARCHABLE);
 
@@ -272,8 +274,17 @@ const ROOM_NAMES = [
   { top: '북쪽 밭', mid: ['서쪽 호박밭', '허수아비 마당', '동쪽 호박밭'], bot: ['헛간', '밭 입구', '과수원'] },
   { top: '북쪽 묘지', mid: ['서쪽 정원', '우물가', '동쪽 정원'], bot: ['허수아비 밭', '정원 입구', '동쪽 묘비길'] },
 ];
+const ROOM_NAMES_EN = [
+  { top: 'the upper hallway', mid: ['the library', 'the owl hall', 'the dining room'], bot: ['the workshop', 'the front hall', 'the storeroom'] },
+  { top: 'the basement hallway', mid: ['the west stacks', 'the middle stacks', 'the east stacks'], bot: ['the book repair room', 'the basement entrance', 'the archive'] },
+  { top: 'the cellar hallway', mid: ['the barrel room', 'the spider nest', 'the jam pantry'], bot: ['the firewood store', 'under the stairs', 'the key room'] },
+  { top: 'the 2F hallway', mid: ['the big bedroom', 'the doll room', 'the study'], bot: ['the wardrobe room', 'the stair hall', 'the music room'] },
+  { top: 'the north field', mid: ['the west pumpkin patch', 'the scarecrow yard', 'the east pumpkin patch'], bot: ['the barn', 'the field entrance', 'the orchard'] },
+  { top: 'the north graveyard', mid: ['the west garden', 'the well', 'the east garden'], bot: ['the scarecrow field', 'the garden gate', 'the east grave path'] },
+];
 export function roomName(stageIdx, c, r) {
-  const R = ROOM_NAMES[stageIdx] || ROOM_NAMES[0];
+  const names = LANG === 'en' ? ROOM_NAMES_EN : ROOM_NAMES;
+  const R = names[stageIdx] || names[0];
   if (r <= 4) return R.top;
   const k = c <= 12 ? 0 : c <= 23 ? 1 : 2;
   return (r <= 14 ? R.mid : R.bot)[k];

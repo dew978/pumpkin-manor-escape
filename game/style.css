@@ -247,10 +247,17 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 .tool .e { font-family: var(--f-emoji); }
 .tool:hover { border-color: var(--pumpkin); }
 .tool.corner { position: absolute; z-index: 3; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); font-size: 15px; padding: 8px 14px; }
+.corner-row { position: absolute; z-index: 3; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); display: flex; gap: 8px; }
+.corner-row .tool { font-size: 15px; padding: 8px 14px; }
 #title .err { margin: 0; text-align: center; }
 .title-foot { position: absolute; z-index: 2; left: clamp(20px, 3vw, 56px); bottom: max(14px, env(safe-area-inset-bottom)); display: grid; gap: 3px; justify-items: start; padding-right: 16px; pointer-events: none; text-shadow: 0 1px 4px #000; }
 .title-foot b { font-family: var(--f-num); font-weight: 400; font-size: 17px; color: var(--parchment); letter-spacing: .08em; }
 .title-foot span { font-size: 12px; color: var(--dim); }
+.title-foot .vf { font-size: 13px; color: var(--candle); letter-spacing: .04em; }
+/* 영어판: 제목·큰 글씨는 할로윈 영문 글꼴 */
+html[lang="en"] { --f-display: "Creepster", "Gowun Dodum", cursive; }
+html[lang="en"] .logo { font-family: "Creepster", cursive; letter-spacing: .03em; }
+html[lang="en"] .title-kicker { letter-spacing: .12em; }
 /* 박쥐 네 마리가 밤하늘을 가로지른다(날갯짓은 위아래로 눌렀다 폈다) */
 .bats { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 .title-art { z-index: 0; }
@@ -429,3 +436,5 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 
 /* 뒤지는 중: 상호작용 단추가 왼쪽부터 차오른다 */
 #actBtn.busy { background: linear-gradient(90deg, #ffb35a calc(var(--p, 0) * 100%), var(--candle) calc(var(--p, 0) * 100%)); }
+
+html[lang="en"] .howto b { min-width: 124px; }

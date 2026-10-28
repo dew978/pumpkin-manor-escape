@@ -5,7 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { STAGES, MONSTERS, CHARACTERS, EDGE_COLORS, PLAYER_SPEED, diffForGrade, monsterSpots, SEARCHABLE, SEARCH_CODES, CHEST_N, roomName } from './config.js';
-import { loadBank, defaultBank, validateBank, pickQuestions } from './questions.js';
+import { loadBank, defaultBank, validateBank, pickQuestions, BANK_KEY } from './questions.js';
 import { loadModels, spawnModel, modelSize, glowTexture } from './assets.js';
 import { loadKids, makeKid, playKid, hasKid } from './chars.js';
 import { playComic, closeComic, comicOpen } from './comic.js';
@@ -15,7 +15,19 @@ import { Sim, ITEM_CODES, THROW_RANGE, LURE_R } from './sim.js';
 import { hostRoom, joinRoom } from './net.js';
 import { parseMap, slideMove, tileOf } from './grid.js';
 import { Sound } from './audio.js';
-import { josa, store, esc, fmtTime } from './util.js';
+import { josa, store, esc, fmtTime, T, LANG, setLang } from './util.js';
+
+// 영어판: index.html의 data-en(내용)·data-en-label(aria-label)·data-en-ph(placeholder)·data-en-title(title)로 바꾼다
+if (LANG === 'en') {
+  document.documentElement.lang = 'en'; document.title = 'Pumpkin Manor Escape';
+  document.querySelectorAll('[data-en]').forEach(el => { el.innerHTML = el.dataset.en; });
+  document.querySelectorAll('[data-en-label]').forEach(el => el.setAttribute('aria-label', el.dataset.enLabel));
+  document.querySelectorAll('[data-en-ph]').forEach(el => { el.placeholder = el.dataset.enPh; });
+  document.querySelectorAll('[data-en-title]').forEach(el => { el.title = el.dataset.enTitle; });
+  document.querySelectorAll('h1.logo span[data-t]').forEach((el, i) => { el.dataset.t = ['Pumpkin Manor', 'Escape'][i]; el.firstChild.nodeValue = el.dataset.t; });
+  document.getElementById('nameIn').maxLength = 10;
+}
+const tr = T;   // 지역 변수 T(합계)가 있는 곳에서 쓴다
 
 const $ = (id) => document.getElementById(id);
 
@@ -183,7 +195,7 @@ function autoAimPoint() {
 let noCandyTipT = 0;
 function throwCandy(pt) {
   if (!canThrow()) {
-    if (S.inGame && S.phase === 'play' && S.me.candy <= 0 && performance.now() > noCandyTipT) { noCandyTipT = performance.now() + 4000; toast('🍬 던질 사탕이 없어요. 바닥에 떠 있는 사탕을 주워요'); }
+    if (S.inGame && S.phase === 'play' && S.me.candy <= 0 && performance.now() > noCandyTipT) { noCandyTipT = performance.now() + 4000; toast(T('🍬 던질 사탕이 없어요. 바닥에 떠 있는 사탕을 주워요', '🍬 No candy to throw. Pick up the candy floating on the floor')); }
     return;
   }
   const dx = pt.x - S.me.x, dz = pt.z - S.me.z; if (Math.hypot(dx, dz) > 0.3) S.me.face = Math.atan2(dx, dz);
@@ -306,32 +318,32 @@ async function startHost() {
   S.mode = 'host'; S.mySlot = 0; S.roster = [{ slot: 0, name: myName(), char: S.char ?? 0 }];
   // 지난번에 하던 곳이 있으면 시작 층을 거기로(시작 층을 바꾸면 그 층 처음부터)
   const sv = loadProgress(); S.resume = sv; S.startStage = sv ? sv.st : 0;
-  showScreen('lobby'); renderLobby(); $('lobbyStatus').textContent = '방을 여는 중…';
-  $('lobbyHint').textContent = sv ? `친구에게 이 코드를 알려 주세요. 최대 4명. 지난번에 이어서 ${saveLabel(sv)} 시작해요.` : '친구에게 이 코드를 알려 주세요. 최대 4명.';
+  showScreen('lobby'); renderLobby(); $('lobbyStatus').textContent = T('방을 여는 중…', 'Opening the room…');
+  $('lobbyHint').textContent = sv ? T(`친구에게 이 코드를 알려 주세요. 최대 4명. 지난번에 이어서 ${saveLabel(sv)} 시작해요.`, `Tell your friends this code. Up to 4 players. Continuing from last time: ${saveLabel(sv)}.`) : HOST_HINT();
   try {
     S.link = await hostRoom({
       status: (s, d) => {
-        if (s === 'ready') { $('lobbyCode').textContent = S.link.code; $('lobbyStatus').textContent = '친구를 기다리는 중'; showCodeBadge(S.link.code); }
-        else if (s === 'error') $('lobbyStatus').textContent = `연결 문제: ${d}. 인터넷을 확인하고 다시 만들어 주세요.`;
+        if (s === 'ready') { $('lobbyCode').textContent = S.link.code; $('lobbyStatus').textContent = T('친구를 기다리는 중', 'Waiting for friends'); showCodeBadge(S.link.code); }
+        else if (s === 'error') $('lobbyStatus').textContent = T(`연결 문제: ${d}. 인터넷을 확인하고 다시 만들어 주세요.`, `Connection problem: ${d}. Check the internet and create the room again.`);
       },
       // 친구에게는 아직 아무도 고르지 않은 분장을 준다
-      join: (slot) => { const used = new Set(S.roster.map(r => r.char)); const char = [0, 1, 2, 3].find(c => !used.has(c)) ?? slot; S.roster.push({ slot, name: `친구${slot}`, char, pending: true }); broadcastLobby(); },
+      join: (slot) => { const used = new Set(S.roster.map(r => r.char)); const char = [0, 1, 2, 3].find(c => !used.has(c)) ?? slot; S.roster.push({ slot, name: T(`친구${slot}`, `Friend ${slot}`), char, pending: true }); broadcastLobby(); },
       leave: (slot) => {
         const p = S.roster.find(r => r.slot === slot);
         S.roster = S.roster.filter(r => r.slot !== slot);
-        if (S.inGame) { S.sim?.removePlayer(slot); removePlayerActor(slot); toast(`${josa(p?.name || '친구', '이가')} 나갔어요`); }
+        if (S.inGame) { S.sim?.removePlayer(slot); removePlayerActor(slot); toast(T(`${josa(p?.name || '친구', '이가')} 나갔어요`, `${p?.name || 'A friend'} left`)); }
         broadcastLobby();
       },
       data: (m, slot) => {
         if (m.t === 'hello') {
-          const r = S.roster.find(q => q.slot === slot); if (r) { r.name = String(m.name || '').slice(0, 6) || `친구${slot}`; r.pending = false; }
+          const r = S.roster.find(q => q.slot === slot); if (r) { r.name = String(m.name || '').slice(0, 10) || T(`친구${slot}`, `Friend ${slot}`); r.pending = false; }
           broadcastLobby();
           if (S.inGame && S.sim && S.lastStart && S.sim.phase === 'play' && r) {
             // 층이 진행 중이면 지금 쪽지부터 바로 함께한다(시작 자리에서)
             S.sim.addPlayer(r);
             const roster = [...S.sim.players.values()].map(({ slot, name, char }) => ({ slot, name, char }));
             S.link.send(slot, { ...S.lastStart, round: S.sim.round, roster, late: true });
-          } else if (S.inGame) S.link.send(slot, { t: 'wait', msg: '층이 끝나는 중이에요. 다음 층부터 함께해요!' });
+          } else if (S.inGame) S.link.send(slot, { t: 'wait', msg: T('층이 끝나는 중이에요. 다음 층부터 함께해요!', 'This floor is ending. You will join from the next floor!') });
         } else if (m.t === 'seen') { S.seen.add(slot); updateSeen(); }
         else if (m.t === 'pos') S.sim?.setPlayer(slot, +m.x, +m.z, +m.f, !!m.mv);
         else S.sim?.input(slot, m);
@@ -343,7 +355,7 @@ async function startHost() {
 function showCodeBadge(code) {
   let b = $('codeBadge');
   if (!b) { b = document.createElement('div'); b.id = 'codeBadge'; $('app').appendChild(b); }
-  b.innerHTML = `방 코드 <b>${esc(code)}</b><small>친구들에게 알려 주세요</small>`;
+  b.innerHTML = T(`방 코드 <b>${esc(code)}</b><small>친구들에게 알려 주세요</small>`, `Room code <b>${esc(code)}</b><small>Tell your friends</small>`);
   b.hidden = !comicOpen();
 }
 function broadcastLobby() {
@@ -354,25 +366,25 @@ function broadcastLobby() {
 
 async function startJoin() {
   const code = $('codeIn').value.trim().toUpperCase();
-  if (code.length !== 5) { setTitleErr('방 코드 5글자를 넣어 주세요.'); return; }
+  if (code.length !== 5) { setTitleErr(T('방 코드 5글자를 넣어 주세요.', 'Enter the 5-letter room code.')); return; }
   setTitleErr('');
   S.mode = 'client'; S.roster = []; S.mySlot = -1;
-  showScreen('lobby'); $('lobbyCode').textContent = code; $('lobbyRole').textContent = '들어간 방';
-  $('lobbyHint').textContent = '방장이 시작하면 함께 들어가요.'; $('hostCtl').hidden = true; $('lobbyStatus').textContent = '연결하는 중…'; $('members').innerHTML = '';
+  showScreen('lobby'); $('lobbyCode').textContent = code; $('lobbyRole').textContent = T('들어간 방', 'Joined room');
+  $('lobbyHint').textContent = T('방장이 시작하면 함께 들어가요.', 'You will start together when the host starts.'); $('hostCtl').hidden = true; $('lobbyStatus').textContent = T('연결하는 중…', 'Connecting…'); $('members').innerHTML = '';
   try {
     S.link = await joinRoom(code, {
       status: (s, d) => {
-        if (s === 'connected') { $('lobbyStatus').textContent = '연결됐어요. 방장을 기다리는 중'; S.link.send({ t: 'hello', name: myName() }); }
-        else if (s === 'closed') { leaveToTitle('방장과 연결이 끊겼어요.'); }
-        else if (s === 'error') { leaveToTitle(d === 'timeout' || d === 'peer-unavailable' ? '그 코드의 방을 찾지 못했어요. 코드를 다시 확인해 주세요.' : `연결 문제: ${d}`); }
+        if (s === 'connected') { $('lobbyStatus').textContent = T('연결됐어요. 방장을 기다리는 중', 'Connected. Waiting for the host'); S.link.send({ t: 'hello', name: myName() }); }
+        else if (s === 'closed') { leaveToTitle(T('방장과 연결이 끊겼어요.', 'Lost the connection to the host.')); }
+        else if (s === 'error') { leaveToTitle(d === 'timeout' || d === 'peer-unavailable' ? T('그 코드의 방을 찾지 못했어요. 코드를 다시 확인해 주세요.', 'No room found with that code. Please check the code.') : T(`연결 문제: ${d}`, `Connection problem: ${d}`)); }
       },
       data: (m) => {
         if (m.t === 'lobby') { S.roster = m.roster; if (m.you) S.mySlot = m.you; renderLobby(); }
         else if (m.t === 'start') beginStage(m);
         else if (m.t === 's') applySnap(m);
-        else if (m.t === 'full') leaveToTitle('방이 꽉 찼어요(최대 4명).');
+        else if (m.t === 'full') leaveToTitle(T('방이 꽉 찼어요(최대 4명).', 'The room is full (max 4 players).'));
         else if (m.t === 'wait') $('lobbyStatus').textContent = m.msg;
-        else if (m.t === 'title') leaveToTitle('방장이 게임을 끝냈어요.');
+        else if (m.t === 'title') leaveToTitle(T('방장이 게임을 끝냈어요.', 'The host ended the game.'));
       },
     });
   } catch (e) { leaveToTitle(e.message); }
@@ -394,7 +406,8 @@ function loadProgress() {
     return s;
   } catch (e) { return null; }
 }
-const saveLabel = (s) => `${s.st + 1}층 ${STAGES[s.st].name}${s.rd ? ` · 쪽지 ${s.rd + 1}장째` : ''}부터`;
+const saveLabel = (s) => T(`${s.st + 1}층 ${STAGES[s.st].name}${s.rd ? ` · 쪽지 ${s.rd + 1}장째` : ''}부터`, `from floor ${s.st + 1}, ${STAGES[s.st].name}${s.rd ? ` · note ${s.rd + 1}` : ''}`);
+const HOST_HINT = () => T('친구에게 이 코드를 알려 주세요. 최대 4명.', 'Tell your friends this code. Up to 4 players.');
 function newRun() {
   // 이번 판의 문제: 학년 교과 + 할로윈 상식을 섞어 층마다 쪽지 수만큼, 상자·가구 문제는 층마다 묶음으로.
   // 기본 문제 은행이면 학년 산수 문제(그때그때 만듦)를 섞어 한 시간 동안 덜 겹치게 한다
@@ -428,7 +441,7 @@ function leaveToTitle(err = '') {
   S.link?.close(); S.link = null; S.mode = 'none'; S.sim = null; S.inGame = false; S.run = null; S.lastStart = null; S.resume = null; closeQuiz(); closeComic();
   closeModal(); toggleNote(false);
   ['hud', 'bottom', 'compass', 'banner', 'hideview', 'stick', 'throwBtn'].forEach(id => $(id).hidden = true);
-  $('lobbyRole').textContent = '방 코드'; $('lobbyHint').textContent = '친구에게 이 코드를 알려 주세요. 최대 4명.'; $('hostCtl').hidden = false;
+  $('lobbyRole').textContent = T('방 코드', 'Room code'); $('lobbyHint').textContent = HOST_HINT(); $('hostCtl').hidden = false;
   showScreen('title'); setTitleErr(err); Sound.music(true);
   buildStageScene(0, null); S.monsters.forEach(m => m.grp.visible = true);
 }
@@ -445,7 +458,7 @@ function beginStage(msg) {
   clearDialog();
   buildStageScene(msg.st, msg.roster);
   const me = msg.roster.find(r => r.slot === S.mySlot);
-  if (!me && S.mode === 'client') { $('lobbyStatus').textContent = '게임이 진행 중이에요. 다음 층부터 함께해요!'; return; }
+  if (!me && S.mode === 'client') { $('lobbyStatus').textContent = T('게임이 진행 중이에요. 다음 층부터 함께해요!', 'A game is in progress. You will join from the next floor!'); return; }
   S.inGame = true;
   showScreen(null); closeModal();
   if (S.mode !== 'client') saveProgress(msg.st, S.round);
@@ -454,7 +467,8 @@ function beginStage(msg) {
   const st = STAGES[msg.st];
   $('stageName').textContent = st.name; updateStageSub();
   renderNote(); updateItemBtn();
-  toast(msg.late ? `${st.name} — 친구들과 함께 쪽지를 찾아요!` : S.round ? `${st.name} — ${S.round + 1}번째 쪽지부터 다시 찾아요!` : S.puzzles.length > 1 ? `${st.name} — 쪽지 ${S.puzzles.length}장을 차례로 찾아요. 한 장은 4조각이에요!` : `${st.name} — 쪽지 4조각을 모아 문제를 풀면 탈출문이 열려요!`, 4200);
+  toast(T(msg.late ? `${st.name} — 친구들과 함께 쪽지를 찾아요!` : S.round ? `${st.name} — ${S.round + 1}번째 쪽지부터 다시 찾아요!` : S.puzzles.length > 1 ? `${st.name} — 쪽지 ${S.puzzles.length}장을 차례로 찾아요. 한 장은 4조각이에요!` : `${st.name} — 쪽지 4조각을 모아 문제를 풀면 탈출문이 열려요!`,
+    msg.late ? `${st.name} — Find the notes with your friends!` : S.round ? `${st.name} — Starting again from note ${S.round + 1}!` : S.puzzles.length > 1 ? `${st.name} — Find ${S.puzzles.length} notes one by one. Each note has 4 pieces!` : `${st.name} — Collect 4 note pieces and solve the question to open the exit!`), 4200);
   // 루미가 찾는 법과 첫 방 힌트를 알려 준다
   setTimeout(() => {
     if (S.stageIdx !== msg.st || !S.inGame) return;
@@ -503,7 +517,7 @@ function addPlayerActor(r) {
   // 뼈대·동작이 있는 분장 아이 모델(없으면 예전 정지 모델)
   const kid = hasKid(ch.kid) ? makeKid(ch.kid) : null;
   const model = kid ? kid.holder : spawnModel(ch.model, 1.3); grp.add(model);
-  const label = labelSprite(r.slot === S.mySlot ? `${r.name} (나)` : r.name, ch.color, 0.34); label.position.y = 1.75; grp.add(label);
+  const label = labelSprite(r.slot === S.mySlot ? T(`${r.name} (나)`, `${r.name} (me)`) : r.name, ch.color, 0.34); label.position.y = 1.75; grp.add(label);
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(ch.color), transparent: true, opacity: 0.6, toneMapped: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; grp.add(ring);
   // 손에 든 등불 빛(가볍게에서는 친구 손전등이 실제 불빛이 아니어서 이것으로 보인다)
@@ -547,8 +561,8 @@ function makeMonsterActor(spec, s) {
   const bang = labelSprite('!', '#ff5a4a', 0.55); bang.position.y = spec.h + 0.5; bang.visible = false; grp.add(bang);
   const huh = labelSprite('?', '#b9a8ff', 0.5); huh.position.y = spec.h + 0.5; huh.visible = false; grp.add(huh);
   // 사탕으로 가는 중 '사탕!', 먹는 중 '냠냠'
-  const want = labelSprite('사탕!', '#ff9ee0', 0.5); want.position.y = spec.h + 0.5; want.visible = false; grp.add(want);
-  const yum = labelSprite('냠냠', '#ffd27a', 0.55); yum.position.y = spec.h + 0.5; yum.visible = false; grp.add(yum);
+  const want = labelSprite(T('사탕!', 'Candy!'), '#ff9ee0', 0.5); want.position.y = spec.h + 0.5; want.visible = false; grp.add(want);
+  const yum = labelSprite(T('냠냠', 'Yum'), '#ffd27a', 0.55); yum.position.y = spec.h + 0.5; yum.visible = false; grp.add(yum);
   grp.position.set(s.c, spec.float || 0, s.r);
   S.world.group.add(grp);
   return { spec, grp, model, eyes, halo, bang, huh, want, yum, x: s.c, z: s.r, tx: s.c, tz: s.r, face: 0, tface: 0, state: 0, anim: Math.random() * 10 };
@@ -556,7 +570,7 @@ function makeMonsterActor(spec, s) {
 
 function updateStageSub() {
   const st = STAGES[S.stageIdx], n = S.puzzles?.length || 1;
-  $('stageSub').textContent = `${S.stageIdx + 1} / ${STAGES.length}층${n > 1 ? ` · 쪽지 ${S.round + 1} / ${n}장` : ''} · ${st.sub}`;
+  $('stageSub').textContent = T(`${S.stageIdx + 1} / ${STAGES.length}층${n > 1 ? ` · 쪽지 ${S.round + 1} / ${n}장` : ''} · ${st.sub}`, `Floor ${S.stageIdx + 1} / ${STAGES.length}${n > 1 ? ` · Note ${S.round + 1} / ${n}` : ''} · ${st.sub}`);
 }
 // 다음 쪽지로: 조각·쪽지 창·뒤질 가구 표시를 새로 시작한다
 function startNote(rd) {
@@ -631,9 +645,9 @@ function handleEvent(e) {
     Sound.fanfare(); flashScreen('#fff2c0', 0.3);
     if (S.mode !== 'client') saveProgress(S.stageIdx, e.rd);
     const left = S.puzzles.length - e.rd;
-    say([lumiLine(left > 1 ? `정답! 그런데 문은 아직 안 열려. 쪽지가 ${left}장 더 있대!` : '정답! 이제 마지막 쪽지야. 이것만 풀면 탈출문이 열려!'), lumiLine(roomHint())]);
+    say([lumiLine(left > 1 ? T(`정답! 그런데 문은 아직 안 열려. 쪽지가 ${left}장 더 있대!`, `Correct! But the door is still closed. There are ${left} more notes!`) : T('정답! 이제 마지막 쪽지야. 이것만 풀면 탈출문이 열려!', "Correct! This is the last note. Solve it and the exit opens!")), lumiLine(roomHint())]);
   }
-  else if (e.k === 'arrangeWrong' && e.slot === S.mySlot) { Sound.bad(); renderNote(); $('noteSlots')?.classList.add('shake'); toast(lowGrade() ? '순서가 맞지 않아요. 번호 순서대로 놓아요' : '순서가 맞지 않아요. 이웃한 가장자리 색이 같게 조각을 끌어서 바꿔 봐요'); }
+  else if (e.k === 'arrangeWrong' && e.slot === S.mySlot) { Sound.bad(); renderNote(); $('noteSlots')?.classList.add('shake'); toast(lowGrade() ? T('순서가 맞지 않아요. 번호 순서대로 놓아요', 'Wrong order. Place them in number order') : T('순서가 맞지 않아요. 이웃한 가장자리 색이 같게 조각을 끌어서 바꿔 봐요', 'Wrong order. Drag the pieces so touching edges have the same color')); }
   else if (e.k === 'frag') {
     const p = S.players.get(e.slot), ch = CHARACTERS[(p?.char ?? 0) % CHARACTERS.length];
     if (S.puzzle) say(fragLines(S.stageIdx, e.n, S.puzzle.parts[e.id], { face: ch.face, name: p?.name || ch.costume, color: ch.color }, e.n < 4 ? roomHint() : null, S.round, S.round === S.puzzles.length - 1));
@@ -645,7 +659,7 @@ function handleEvent(e) {
     (S.note.wrongPicks ??= new Set()).add(e.v);
     Object.assign(S.note, { tray: shuffle([0, 1, 2, 3]), slots: [null, null, null, null], picked: null });
     toggleNote(false); renderNote(); flashScreen('#c9a8ff', 0.35);
-    say([lumiLine('앗, 쪽지가 다시 흩어졌어! 감지기를 보고 ? 가구를 다시 뒤져 봐. 다시 붙이면 힌트도 보여 줄게.')]);
+    say([lumiLine(T('앗, 쪽지가 다시 흩어졌어! 감지기를 보고 ? 가구를 다시 뒤져 봐. 다시 붙이면 힌트도 보여 줄게.', "Oh no, the note scattered again! Use the detector and search the ? spots again. I'll show you a hint when you put it back together."))]);
   }
   else if (e.k === 'fragMoved' && e.slot === S.mySlot) { Sound.bad(); flashScreen('#fff2c0', 0.2); }
   else if (e.k === 'throw') startFlight(e);
@@ -662,7 +676,7 @@ function showCorrectThenOpen(name) {
     toggleNote(false);
     S.cine = { t: 0, dur: 3.4, opened: false, name };
     $('app').classList.add('cine');
-    const tx = $('cineText'); tx.textContent = '탈출문이 열린다!'; tx.hidden = false;
+    const tx = $('cineText'); tx.textContent = T('탈출문이 열린다!', 'The exit is opening!'); tx.hidden = false;
   }, 1400);
 }
 function openExitVisual() {
@@ -683,7 +697,7 @@ function stepCine(dt) {
   const c = S.cine; if (!c) return;
   c.t += dt;
   if (!c.opened && c.t > 0.5) { c.opened = true; openExitVisual(); S.shake = 0.25; }
-  if (c.t >= c.dur) { S.cine = null; $('app').classList.remove('cine'); $('cineText').hidden = true; toast('🚪 탈출문이 열렸어요! 초록 화살표를 따라 문으로 달려요'); }
+  if (c.t >= c.dur) { S.cine = null; $('app').classList.remove('cine'); $('cineText').hidden = true; toast(T('🚪 탈출문이 열렸어요! 초록 화살표를 따라 문으로 달려요', '🚪 The exit is open! Follow the green arrow to the door')); }
 }
 
 /* ---------- 내 조작 ---------- */
@@ -733,7 +747,8 @@ function nearChest() {
   return best;
 }
 // 가까운 아이템(모래시계·수정구·물약). 사탕은 지나가면 저절로 줍는다
-const ITEM_INFO = [['⏳', '모래시계', '모래시계로'], ['🔮', '수정구', '수정구로'], ['🧪', '날쌘 물약', '날쌘 물약으로']];
+const ITEM_INFO = T([['⏳', '모래시계', '모래시계로'], ['🔮', '수정구', '수정구로'], ['🧪', '날쌘 물약', '날쌘 물약으로']],
+  [['⏳', 'hourglass', 'hourglass'], ['🔮', 'crystal ball', 'crystal ball'], ['🧪', 'speed potion', 'speed potion']]);
 function nearItem() {
   if (!S.itemList || S.me.flags & 7) return -1;
   let best = -1, bd = 1.3;
@@ -763,8 +778,8 @@ function nearSearch() {
 function stepQuizRange() {
   const t = quizAt; if (!t || $('quiz').hidden) return;
   const gone = t.kind === 'search' ? S.searchList?.[t.id]?.[2] : S.chestOpen[t.id];
-  if (gone && !t.answered) { closeQuiz(); toast('다른 친구가 먼저 열었어요'); return; }
-  if (!t.answered && Math.hypot(S.me.x - t.x, S.me.z - t.z) > 2.2) { closeQuiz(); toast('너무 멀어져서 문제를 닫았어요. 다시 가까이 가서 눌러요'); }
+  if (gone && !t.answered) { closeQuiz(); toast(T('다른 친구가 먼저 열었어요', 'A friend opened it first')); return; }
+  if (!t.answered && Math.hypot(S.me.x - t.x, S.me.z - t.z) > 2.2) { closeQuiz(); toast(T('너무 멀어져서 문제를 닫았어요. 다시 가까이 가서 눌러요', 'You moved too far away, so the question closed. Go back and press again')); }
 }
 // 뒤질 곳 표시: 가구 위에 반짝임과 물음표(잠기면 자물쇠). 뒤진 곳은 사라진다
 const searchGlowTex = glowTexture('255,226,150');
@@ -788,10 +803,11 @@ function syncSearch(sr) {
 // 루미의 방 힌트: 나와 가장 가까운 (아직 못 찾은) 쪽지가 있는 방
 function roomHint() {
   const left = (S.fragList || []).filter(f => !f[2]);
-  if (!left.length) return '쪽지를 다 찾았어! 쪽지 단추를 눌러 이어 붙여 봐.';
+  if (!left.length) return T('쪽지를 다 찾았어! 쪽지 단추를 눌러 이어 붙여 봐.', 'You found every piece! Press the note button to put them together.');
   const f = left.sort((a, b) => Math.hypot(a[0] - S.me.x, a[1] - S.me.z) - Math.hypot(b[0] - S.me.x, b[1] - S.me.z))[0];
   const room = roomName(S.stageIdx, f[0], f[1]);
-  const lines = [`${room} 쪽에서 종이 냄새가 나!`, `쪽지 하나는 ${room} 어딘가에 있을 거야.`, `${room}에 가 봐. 가구를 하나씩 뒤져 보자!`];
+  const lines = T([`${room} 쪽에서 종이 냄새가 나!`, `쪽지 하나는 ${room} 어딘가에 있을 거야.`, `${room}에 가 봐. 가구를 하나씩 뒤져 보자!`],
+    [`I smell paper near ${room}!`, `One piece must be somewhere in ${room}.`, `Go to ${room}. Let's search the furniture one by one!`]);
   return lines[Math.floor(Math.random() * lines.length)];
 }
 let hintT = 0;
@@ -850,7 +866,7 @@ function watchFps(now) {
   fpsSlow = fps < 40 ? fpsSlow + 1 : 0; fpsFast = fps > 58 ? fpsFast + 1 : 0;
   if (fpsSlow >= 2 && pixelRatio > MIN_PR) { pixelRatio = Math.max(MIN_PR, +(pixelRatio - 0.15).toFixed(2)); fpsSlow = 0; resize(); }
   else if (fpsFast >= 4 && pixelRatio < MAX_PR) { pixelRatio = Math.min(MAX_PR, +(pixelRatio + 0.1).toFixed(2)); fpsFast = 0; resize(); }
-  if (!fpsBox.hidden) fpsBox.textContent = `${fps.toFixed(0)} fps · 해상도 ×${pixelRatio}`;
+  if (!fpsBox.hidden) fpsBox.textContent = `${fps.toFixed(0)} fps · ${T('해상도', 'res')} ×${pixelRatio}`;
 }
 
 function animateActors(dt, t) {
@@ -985,7 +1001,7 @@ function dangerAndHeart(dt) {
 /* ---------- HUD ---------- */
 function updateHUD() {
   const tm = $('timer'); tm.textContent = fmtTime(S.time); tm.classList.toggle('low', S.time < 45);
-  $('fragN').textContent = S.pz.asm ? '완성' : `${S.pz.have.length}/4`;
+  $('fragN').textContent = S.pz.asm ? T('완성', 'done') : `${S.pz.have.length}/4`;
   $('noteBtn').classList.toggle('ready', (S.pz.have.length === 4 || S.pz.asm) && !S.pz.open);
   const tb = $('throwBtn'); tb.hidden = !S.inGame || $('bottom').hidden || !!(S.me.flags & 4);
   $('throwN').textContent = S.me.candy; tb.classList.toggle('empty', S.me.candy <= 0 || !!(S.me.flags & 3));
@@ -998,10 +1014,10 @@ function updateHUD() {
   updateItemBtn();
   // 배너
   const b = $('banner'); let msg = '';
-  if (S.me.flags & 4) msg = '✨ 탈출 성공! 남은 친구들을 기다려요';
-  else if (S.me.flags & 2) msg = '🔒 새장에 갇혔어요. 친구가 옆에 서 있으면 풀려나요 · 그동안 쪽지를 풀 수 있어요';
-  else if (S.pz.have.length === 4 && !S.pz.asm && $('note').hidden) msg = '📜 쪽지를 다 모았어요! 쪽지 버튼을 눌러 이어 붙여요';
-  else if (S.pz.asm && !S.pz.open && $('note').hidden) msg = '📜 쪽지 버튼을 눌러 문제를 풀면 탈출문이 열려요';
+  if (S.me.flags & 4) msg = T('✨ 탈출 성공! 남은 친구들을 기다려요', '✨ You escaped! Wait for your friends');
+  else if (S.me.flags & 2) msg = T('🔒 새장에 갇혔어요. 친구가 옆에 서 있으면 풀려나요 · 그동안 쪽지를 풀 수 있어요', "🔒 You're in the cage. A friend standing next to it frees you · You can still work on the note");
+  else if (S.pz.have.length === 4 && !S.pz.asm && $('note').hidden) msg = T('📜 쪽지를 다 모았어요! 쪽지 버튼을 눌러 이어 붙여요', '📜 You have all the pieces! Press the note button to put them together');
+  else if (S.pz.asm && !S.pz.open && $('note').hidden) msg = T('📜 쪽지 버튼을 눌러 문제를 풀면 탈출문이 열려요', '📜 Press the note button and solve the question to open the exit');
   if (b.textContent !== msg) b.textContent = msg;
   b.hidden = !msg || dialogOpen();
   $('hideview').hidden = !(S.me.flags & 1);
@@ -1013,16 +1029,17 @@ function updateCompass() {
   if (!S.world || !S.inGame || S.me.flags & 6 || S.phase !== 'play') { cmp.hidden = true; $('detector').hidden = true; return; }
   updateDetector();
   let tx = null, tz = null, label = '';
-  if (S.pz.open) { tx = S.world.exit.x; tz = S.world.exit.z; label = '탈출문'; }
+  if (S.pz.open) { tx = S.world.exit.x; tz = S.world.exit.z; label = EXIT_LABEL; }
   if (tx === null) { cmp.hidden = true; return; }
   const dx = tx - S.me.x, dz = tz - S.me.z;
   $('compassArrow').style.transform = `rotate(${Math.atan2(dx, -dz)}rad)`;
-  $('compassLabel').textContent = label; $('compassDist').textContent = `${Math.round(Math.hypot(dx, dz))}칸`;
-  cmp.classList.toggle('exit', label === '탈출문');
+  $('compassLabel').textContent = label; $('compassDist').textContent = `${Math.round(Math.hypot(dx, dz))}${T('칸', ' m')}`;
+  cmp.classList.toggle('exit', label === EXIT_LABEL);
   cmp.hidden = false;
 }
 // 쪽지 감지기: 가장 가까운 (못 찾은) 쪽지까지 거리로 5단계. 가까울수록 막대가 차고 빨리 깜빡인다
-const DET_WORDS = ['차가워', '미지근해', '따뜻해', '뜨거워!', '바로 여기!'];
+const DET_WORDS = T(['차가워', '미지근해', '따뜻해', '뜨거워!', '바로 여기!'], ['Cold', 'Cool', 'Warm', 'Hot!', 'Right here!']);
+const EXIT_LABEL = T('탈출문', 'Exit');
 function updateDetector() {
   const det = $('detector'), left = (S.fragList || []).filter(f => !f[2]);
   if (S.pz.open || S.pz.have.length >= 4 || !left.length) { det.hidden = true; return; }
@@ -1035,7 +1052,7 @@ function updateDetector() {
 }
 function updateItemBtn() {
   const it = S.me.item, btn = $('itemBtn');
-  const info = it === 1 ? ['🔮', '수정구'] : it === 2 ? ['🧪', '날쌘 물약'] : ['✋', '빈손'];
+  const info = it === 1 ? ['🔮', T('수정구', 'Crystal')] : it === 2 ? ['🧪', T('날쌘 물약', 'Potion')] : ['✋', T('빈손', 'Empty')];
   $('itemIcon').textContent = info[0]; $('itemName').textContent = info[1]; btn.disabled = it < 0;
   btn.classList.toggle('ready', it >= 0);
 }
@@ -1043,19 +1060,19 @@ function updateActionUI() {
   const btn = $('actBtn'); let label = '';
   if (S.phase === 'play' && !S.cine) {
     const it = nearItem();
-    if (S.me.flags & 1) label = '옷장에서 나오기';
-    else if (nearChest() >= 0) label = '🎃 호박 상자 열기';
+    if (S.me.flags & 1) label = T('옷장에서 나오기', 'Leave wardrobe');
+    else if (nearChest() >= 0) label = T('🎃 호박 상자 열기', '🎃 Open pumpkin box');
     else if (it >= 0) {
-      const code = S.itemList[it][0], [ic, nm, nmRo] = ITEM_INFO[code] || ['✨', '아이템', '아이템으로'];
-      label = code > 0 && S.me.item > 0 ? `${ic} ${nmRo} 바꾸기` : `${ic} ${nm} 줍기`;
+      const code = S.itemList[it][0], [ic, nm, nmRo] = ITEM_INFO[code] || ['✨', T('아이템', 'item'), T('아이템으로', 'item')];
+      label = code > 0 && S.me.item > 0 ? T(`${ic} ${nmRo} 바꾸기`, `${ic} Swap for ${nmRo}`) : T(`${ic} ${nm} 줍기`, `${ic} Pick up ${nm}`);
     }
     else if (nearSearch() >= 0) {
-      const a = S.searchList[nearSearch()], [ic, nm] = SEARCHABLE[SEARCH_CODES[a[3]]] || ['🔍', '가구'];
-      label = a[4] ? `🔒 ${a[4]}초 뒤에 다시` : `${ic} ${nm} 뒤지기`;
+      const a = S.searchList[nearSearch()], [ic, nm] = SEARCHABLE[SEARCH_CODES[a[3]]] || ['🔍', T('가구', 'furniture')];
+      label = a[4] ? T(`🔒 ${a[4]}초 뒤에 다시`, `🔒 Try again in ${a[4]} s`) : T(`${ic} ${nm} 뒤지기`, `${ic} Search ${nm}`);
     }
-    else if (!(S.me.flags & 6) && nearWardrobe() >= 0) label = '옷장에 숨기';
+    else if (!(S.me.flags & 6) && nearWardrobe() >= 0) label = T('옷장에 숨기', 'Hide in wardrobe');
   }
-  const html = label ? `${label} <span class="how">${coarse ? '터치' : 'E'}</span>` : '';
+  const html = label ? `${label} <span class="how">${coarse ? T('터치', 'tap') : 'E'}</span>` : '';
   if (btn.dataset.html !== html) { btn.dataset.html = html; btn.innerHTML = html; }
   btn.hidden = !label;
 }
@@ -1084,27 +1101,27 @@ function choicesHTML(quiz, wrongSet) {
 }
 // 문제 읽어 주기(브라우저 음성). 1~2학년은 문제 창이 열리면 저절로 읽는다
 const canSpeak = 'speechSynthesis' in window;
-const readBtn = () => canSpeak ? '<button class="read" type="button" aria-label="문제 읽어 주기">🔊 읽어 주기</button>' : '';
+const readBtn = () => canSpeak ? T('<button class="read" type="button" aria-label="문제 읽어 주기">🔊 읽어 주기</button>', '<button class="read" type="button" aria-label="Read the question aloud">🔊 Read aloud</button>') : '';
 function speak(text) {
   if (!canSpeak || Sound.muted) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 0.92;
-  const v = speechSynthesis.getVoices().find(v => v.lang?.startsWith('ko')); if (v) u.voice = v;
+  const u = new SpeechSynthesisUtterance(text); u.lang = T('ko-KR', 'en-US'); u.rate = 0.92;
+  const v = speechSynthesis.getVoices().find(v => v.lang?.startsWith(T('ko', 'en'))); if (v) u.voice = v;
   speechSynthesis.speak(u);
 }
 function bindRead(body, quiz, auto) {
-  const text = `${quiz.q} 보기. ${quiz.choices.map((c, i) => `${i + 1}번, ${c}`).join('. ')}.`;
+  const text = T(`${quiz.q} 보기. ${quiz.choices.map((c, i) => `${i + 1}번, ${c}`).join('. ')}.`, `${quiz.q} Choices. ${quiz.choices.map((c, i) => `${i + 1}, ${c}`).join('. ')}.`);
   const b = body.querySelector('.read'); if (b) b.onclick = () => speak(text);
   if (auto) speak(text);
 }
 function renderNote() {
   if (!S.puzzle) return;
   const body = $('noteBody'), N = S.puzzle.parts.length, have = S.pz.have;
-  $('noteCount').textContent = S.pz.asm ? '문제 완성' : `${have.length} / ${N} 조각`;
-  if (S.pz.open) { body.innerHTML = `<div class="correct"><b>정답!</b><span>${esc(S.puzzle.answer)}</span></div><p class="problem">${esc(S.puzzle.q)}</p>`; return; }
+  $('noteCount').textContent = S.pz.asm ? T('문제 완성', 'Question complete') : T(`${have.length} / ${N} 조각`, `${have.length} / ${N} pieces`);
+  if (S.pz.open) { body.innerHTML = `<div class="correct"><b>${T('정답!', 'Correct!')}</b><span>${esc(S.puzzle.answer)}</span></div><p class="problem">${esc(S.puzzle.q)}</p>`; return; }
   if (S.pz.asm) {
-    const hint = S.pz.wrong >= 1 ? `<div class="hint">힌트: ${esc(S.puzzle.hint || '문제를 천천히 다시 읽어 보세요.')}</div>` : '';
-    body.innerHTML = `<p class="note-lead">완성된 문제예요. 알맞은 답을 눌러요. 틀리면 쪽지가 다시 흩어져요(다시 모아 붙이면 힌트가 보여요).</p>
+    const hint = S.pz.wrong >= 1 ? `<div class="hint">${T('힌트', 'Hint')}: ${esc(S.puzzle.hint || T('문제를 천천히 다시 읽어 보세요.', 'Read the question again slowly.'))}</div>` : '';
+    body.innerHTML = `<p class="note-lead">${T('완성된 문제예요. 알맞은 답을 눌러요. 틀리면 쪽지가 다시 흩어져요(다시 모아 붙이면 힌트가 보여요).', 'Here is the full question. Tap the right answer. If you are wrong, the note scatters again (put it back together to see a hint).')}</p>
       ${readBtn()}<p class="problem">${esc(S.puzzle.q)}</p>${choicesHTML(S.puzzle, S.note.wrongPicks)}${hint}`;
     bindRead(body, S.puzzle, false);
     body.querySelectorAll('.choice').forEach(b => b.onclick = () => {
@@ -1116,17 +1133,17 @@ function renderNote() {
     return;
   }
   if (have.length < N) {
-    body.innerHTML = `<p class="note-lead">문제가 ${N}조각으로 찢겨 가구 속에 숨겨져 있어요. 물음표가 반짝이는 책장·탁자 옆에서 상호작용 단추를 눌러 뒤져 봐요. 위의 감지기가 뜨거워지면 가까워요.</p>
+    body.innerHTML = `<p class="note-lead">${T(`문제가 ${N}조각으로 찢겨 가구 속에 숨겨져 있어요. 물음표가 반짝이는 책장·탁자 옆에서 상호작용 단추를 눌러 뒤져 봐요. 위의 감지기가 뜨거워지면 가까워요.`, `The question was torn into ${N} pieces and hidden in furniture. Stand next to furniture with a glowing ? and press the action button to search. When the detector at the top gets hot, you are close.`)}</p>
       <div class="pieces">${[0, 1, 2, 3].map(i => have.includes(i) ? `<div class="piece" style="${pieceStyle(i)}">${pieceInner(i)}</div>` : `<div class="piece missing">?</div>`).join('')}</div>`;
     return;
   }
   // 조합: 조각을 끌어다 칸에 놓는다. 놓은 조각도 끌어서 다른 칸과 바꾸거나 아래로 빼낼 수 있다.
   // 짧게 누르면 빈 칸 맨 앞으로 들어가고, 놓인 조각을 짧게 누르면 빠진다. 네 칸이 다 차면 "이대로 붙이기"
   const slots = S.note.slots, tray = S.note.tray.filter(i => !slots.includes(i)), full = slots.every(v => v != null);
-  body.innerHTML = `<p class="note-lead">조각을 모두 모았어요! ${lowGrade() ? '번호 순서대로' : '이웃한 가장자리 색이 같도록'} 조각을 끌어다 칸에 놓아요. 놓은 조각도 끌어서 자리를 바꿀 수 있어요.</p>
+  body.innerHTML = `<p class="note-lead">${T(`조각을 모두 모았어요! ${lowGrade() ? '번호 순서대로' : '이웃한 가장자리 색이 같도록'} 조각을 끌어다 칸에 놓아요. 놓은 조각도 끌어서 자리를 바꿀 수 있어요.`, `You have all the pieces! Drag them into the slots ${lowGrade() ? 'in number order' : 'so touching edges have the same color'}. You can drag placed pieces to swap them.`)}</p>
     <div class="slots" id="noteSlots">${slots.map((v, k) => `<div class="slot ${v != null ? 'full' : ''}" data-k="${k}">${v != null ? `<div class="piece drag" data-i="${v}" data-from="${k}" style="${pieceStyle(v)}">${pieceInner(v)}</div>` : k + 1}</div>`).join('')}</div>
     <div class="pieces tray" id="noteTray">${tray.map(i => `<div class="piece drag pick" data-i="${i}" data-from="tray" style="${pieceStyle(i)}">${pieceInner(i)}</div>`).join('')}</div>
-    ${full ? '<button class="big glue" id="glueBtn">이대로 붙이기</button>' : ''}`;
+    ${full ? `<button class="big glue" id="glueBtn">${T('이대로 붙이기', 'Stick them together')}</button>` : ''}`;
   body.querySelectorAll('.piece.drag').forEach(dragPiece);
   const glue = $('glueBtn');
   if (glue) glue.onclick = () => sendInput({ t: 'arrange', order: S.note.slots.slice() });
@@ -1192,16 +1209,16 @@ let quizAt = null;   // { kind: 'chest'|'search', id, x, z, answered }
 function openQuiz(id) {
   const quiz = S.chestQuiz[id % Math.max(1, S.chestQuiz.length)]; if (!quiz) return;
   const c = S.world.chests[id];
-  showQuiz({ kind: 'chest', id, x: c.c, z: c.r }, quiz, '🎃 호박 상자', '맞히면 아이템!', S.chestSeen++ < 2 ? '문제를 맞히면 상자가 열려요. 기회는 한 번! (괴물은 계속 움직여요)' : '기회는 한 번!',
+  showQuiz({ kind: 'chest', id, x: c.c, z: c.r }, quiz, T('🎃 호박 상자', '🎃 Pumpkin Box'), T('맞히면 아이템!', 'Get it right for an item!'), S.chestSeen++ < 2 ? T('문제를 맞히면 상자가 열려요. 기회는 한 번! (괴물은 계속 움직여요)', 'Answer correctly to open the box. One try only! (Monsters keep moving)') : T('기회는 한 번!', 'One try only!'),
     ok => sendInput({ t: 'chest', id, ok }));
 }
 // 가구 문제: 이 층의 가구 문제 묶음에서 차례로 꺼낸다(틀린 뒤 다시 오면 다음 문제)
 function openSearchQuiz(id) {
   const a = S.searchList[id], quiz = S.searchQuiz[S.searchQi++ % Math.max(1, S.searchQuiz.length)]; if (!quiz) return;
-  const [ic, nm] = SEARCHABLE[SEARCH_CODES[a[3]]] || ['🔍', '가구'];
+  const [ic, nm] = SEARCHABLE[SEARCH_CODES[a[3]]] || ['🔍', T('가구', 'furniture')];
   Sound.play('paper', 0.6); sendInput({ t: 'peek', id, rd: S.round });
-  showQuiz({ kind: 'search', id, x: a[0], z: a[1] }, quiz, `${ic} ${nm} 뒤지기`, '맞히면 뒤질 수 있어요',
-    S.leadSeen++ < 2 ? `문제를 맞히면 ${josa(nm, '을를')} 뒤져요. 틀리면 잠깐 잠기고, 다시 오면 다른 문제가 나와요. 푸는 동안 몸을 숙여서 괴물 눈에 덜 띄지만, 움직이면 들켜요!` : '맞히면 뒤져요 · 움직이면 들켜요!',
+  showQuiz({ kind: 'search', id, x: a[0], z: a[1] }, quiz, T(`${ic} ${nm} 뒤지기`, `${ic} Search the ${nm}`), T('맞히면 뒤질 수 있어요', 'Answer to search it'),
+    S.leadSeen++ < 2 ? T(`문제를 맞히면 ${josa(nm, '을를')} 뒤져요. 틀리면 잠깐 잠기고, 다시 오면 다른 문제가 나와요. 푸는 동안 몸을 숙여서 괴물 눈에 덜 띄지만, 움직이면 들켜요!`, `Answer correctly to search the ${nm}. If you are wrong it locks for a moment, and you get a different question next time. You crouch while answering so monsters see you less, but moving gives you away!`) : T('맞히면 뒤져요 · 움직이면 들켜요!', 'Answer to search · Moving gives you away!'),
     ok => sendInput({ t: 'search', id, ok, rd: S.round }));
 }
 function showQuiz(at, quiz, title, sub, lead, send) {
@@ -1213,7 +1230,7 @@ function showQuiz(at, quiz, title, sub, lead, send) {
   body.querySelectorAll('.choice').forEach(b => b.onclick = () => {
     const pick = quiz.choices[+b.dataset.k], ok = pick === quiz.answer;
     body.querySelectorAll('.choice').forEach(x => { x.disabled = true; if (quiz.choices[+x.dataset.k] === quiz.answer) x.classList.add('right'); });
-    if (!ok) { b.classList.add('wrong'); if (quiz.hint) body.insertAdjacentHTML('beforeend', `<div class="hint">힌트: ${esc(quiz.hint)}</div>`); }
+    if (!ok) { b.classList.add('wrong'); if (quiz.hint) body.insertAdjacentHTML('beforeend', `<div class="hint">${T('힌트', 'Hint')}: ${esc(quiz.hint)}</div>`); }
     if (ok) Sound.ok(); else Sound.bad();
     at.answered = true; send(ok);
     setTimeout(() => { if (quizAt === at) closeQuiz(); }, ok ? 900 : 2600);
@@ -1238,8 +1255,9 @@ function closeModal() { $('modal').hidden = true; modalKey = () => { }; }
 
 function openPause() {
   if (S.paused) return; S.paused = true;
-  openModal(`<h2>잠깐 멈춤</h2><p class="lead">혼자 할 때만 멈출 수 있어요. 괴물도 시간도 멈췄어요.</p>
-    <div class="row"><button class="btn-ink ghost" id="pQuit">처음 화면</button><button class="btn-ink" id="pGo" autofocus>계속하기</button></div>`, e => { if (e.code === 'Escape') resume(); });
+  openModal(T(`<h2>잠깐 멈춤</h2><p class="lead">혼자 할 때만 멈출 수 있어요. 괴물도 시간도 멈췄어요.</p>
+    <div class="row"><button class="btn-ink ghost" id="pQuit">처음 화면</button><button class="btn-ink" id="pGo" autofocus>계속하기</button></div>`, `<h2>Paused</h2><p class="lead">You can only pause when playing alone. The monsters and the clock are frozen.</p>
+    <div class="row"><button class="btn-ink ghost" id="pQuit">Title screen</button><button class="btn-ink" id="pGo" autofocus>Continue</button></div>`), e => { if (e.code === 'Escape') resume(); });
   $('pGo').onclick = resume; $('pQuit').onclick = () => leaveToTitle();
 }
 function resume() { closeModal(); S.paused = false; clock.getDelta(); }
@@ -1258,11 +1276,11 @@ async function showClear(res) {
   if (AFTER_COMIC[S.stageIdx]) await playComic(AFTER_COMIC[S.stageIdx]);
   if (S.stageIdx !== STAGES.indexOf(st)) return;   // 그사이 방장이 다음 층을 시작했다
   if (S.mode === 'client') S.link?.send({ t: 'seen', st: S.stageIdx });
-  openModal(`<div class="result-head"><h2>${esc(st.name)} 탈출!</h2>${res ? starHTML(res.stars) : ''}</div>
-    ${res ? statHTML([[fmtTime(res.time), '걸린 시간'], [`${res.candy}/${res.candyTotal}`, '모은 사탕'], [res.chestOk, '연 호박 상자'], [res.caught, '잡힌 횟수'], [res.wrong, '틀린 답']]) : ''}
-    <p class="lead center">★ 탈출 · ★ 시간을 1/3 넘게 남김 · ★ 사탕 60% 넘게 주움</p>
+  openModal(`<div class="result-head"><h2>${T(`${esc(st.name)} 탈출!`, `Escaped the ${esc(st.name)}!`)}</h2>${res ? starHTML(res.stars) : ''}</div>
+    ${res ? statHTML([[fmtTime(res.time), T('걸린 시간', 'Time')], [`${res.candy}/${res.candyTotal}`, T('모은 사탕', 'Candy')], [res.chestOk, T('연 호박 상자', 'Boxes opened')], [res.caught, T('잡힌 횟수', 'Times caught')], [res.wrong, T('틀린 답', 'Wrong answers')]]) : ''}
+    <p class="lead center">${T('★ 탈출 · ★ 시간을 1/3 넘게 남김 · ★ 사탕 60% 넘게 주움', '★ Escape · ★ More than 1/3 of the time left · ★ More than 60% of the candy')}</p>
     ${S.mode === 'host' ? '<p class="lead center" id="cWait"></p>' : ''}
-    <div class="row">${isHost ? '<button class="btn-ink" id="cNext" autofocus>다음 층으로</button>' : '<p class="lead">방장이 다음 층을 시작하기를 기다려요…</p>'}</div>`);
+    <div class="row">${isHost ? `<button class="btn-ink" id="cNext" autofocus>${T('다음 층으로', 'Next floor')}</button>` : `<p class="lead">${T('방장이 다음 층을 시작하기를 기다려요…', 'Waiting for the host to start the next floor…')}</p>`}</div>`);
   if (isHost) $('cNext').onclick = () => { closeModal(); launchStage(S.stageIdx + 1); };
   updateSeen();
 }
@@ -1271,67 +1289,76 @@ function updateSeen() {
   const el = $('cWait'); if (!el || S.mode !== 'host') return;
   const friends = S.roster.filter(r => r.slot !== S.mySlot && !r.pending), n = friends.filter(r => S.seen?.has(r.slot)).length;
   if (!friends.length) { el.textContent = ''; return; }
-  el.textContent = n >= friends.length ? '✅ 친구들이 모두 만화를 다 봤어요!' : `📖 친구 ${friends.length}명 중 ${n}명이 만화를 다 봤어요. 지금 시작하면 아직 보는 친구의 만화는 닫혀요.`;
+  el.textContent = n >= friends.length ? T('✅ 친구들이 모두 만화를 다 봤어요!', '✅ All your friends finished the comic!') : T(`📖 친구 ${friends.length}명 중 ${n}명이 만화를 다 봤어요. 지금 시작하면 아직 보는 친구의 만화는 닫혀요.`, `📖 ${n} of ${friends.length} friends finished the comic. If you start now, the comic closes for friends still reading.`);
 }
 function showOver(why) {
   toggleNote(false); closeQuiz();
   const isHost = S.mode !== 'client';
-  const title = why === 'time' ? '자정의 종이 울렸어요' : '모두 새장에 갇혔어요';
+  const title = why === 'time' ? T('자정의 종이 울렸어요', 'The midnight bell rang') : T('모두 새장에 갇혔어요', 'Everyone is caged');
   if (isHost) saveProgress(S.stageIdx, S.round);
-  const again = S.round ? ` 푼 쪽지는 그대로 두고 ${S.round + 1}번째 쪽지부터 이어서 해요.` : ' 다시 하면 쪽지가 새로 숨겨져요.';
-  const lead = (why === 'time' ? '시간 안에 탈출문을 열지 못했어요.' : '괴물에게 모두 잡혔어요. 서로 떨어져서 다니고, 잡힌 친구는 바로 구해 주세요.') + again;
+  const again = S.round ? T(` 푼 쪽지는 그대로 두고 ${S.round + 1}번째 쪽지부터 이어서 해요.`, ` Solved notes stay solved; you continue from note ${S.round + 1}.`) : T(' 다시 하면 쪽지가 새로 숨겨져요.', ' If you try again, the notes are hidden in new places.');
+  const lead = (why === 'time' ? T('시간 안에 탈출문을 열지 못했어요.', "You didn't open the exit in time.") : T('괴물에게 모두 잡혔어요. 서로 떨어져서 다니고, 잡힌 친구는 바로 구해 주세요.', 'The monsters caught everyone. Spread out, and rescue caught friends right away.')) + again;
   openModal(`<h2>${title}</h2><p class="story">${lead}</p>
-    <p class="lead">도움말: 위의 쪽지 감지기를 누르면 루미가 쪽지가 있는 방을 알려 줘요. 괴물이 쫓아오면 사탕을 던지거나 옷장에 숨어요.</p>
-    <div class="row">${isHost ? `<button class="btn-ink ghost" id="oTitle">처음 화면</button><button class="btn-ink" id="oRetry" autofocus>다시 도전</button>` : '<p class="lead">방장이 다시 시작하기를 기다려요…</p>'}</div>`);
+    <p class="lead">${T('도움말: 위의 쪽지 감지기를 누르면 루미가 쪽지가 있는 방을 알려 줘요. 괴물이 쫓아오면 사탕을 던지거나 옷장에 숨어요.', 'Tip: press the note detector at the top and Lumi tells you which room a piece is in. If a monster chases you, throw candy or hide in a wardrobe.')}</p>
+    <div class="row">${isHost ? `<button class="btn-ink ghost" id="oTitle">${T('처음 화면', 'Title screen')}</button><button class="btn-ink" id="oRetry" autofocus>${T('다시 도전', 'Try again')}</button>` : `<p class="lead">${T('방장이 다시 시작하기를 기다려요…', 'Waiting for the host to restart…')}</p>`}</div>`);
   if (isHost) { $('oRetry').onclick = () => { closeModal(); launchStage(S.stageIdx, S.round); }; $('oTitle').onclick = () => leaveToTitle(); }
 }
 function showEnding() {
   const T = S.totals;
-  openModal(`<div class="result-head"><h2>호박 저택 탈출 성공!</h2>${starHTML(Math.round(T.stars / STAGES.length))}</div>
-    <p class="story">루미와의 술래잡기가 끝났어요. 내년 할로윈에도 초대장이 올까요?</p>
-    ${statHTML([[fmtTime(T.time), '모두 걸린 시간'], [`★ ${T.stars}/${STAGES.length * 3}`, '모은 별'], [T.candy, '모은 사탕'], [T.caught, '잡힌 횟수'], [T.wrong, '틀린 답']])}
-    <p class="lead">${S.grade}학년 문제로 놀았어요. 선생님께 이 화면을 보여 주세요.</p>
-    <div class="row"><button class="btn-ink" id="eTitle" autofocus>처음 화면</button></div>`);
+  openModal(`<div class="result-head"><h2>${tr('호박 저택 탈출 성공!', 'You escaped Pumpkin Manor!')}</h2>${starHTML(Math.round(T.stars / STAGES.length))}</div>
+    <p class="story">${tr('루미와의 술래잡기가 끝났어요. 내년 할로윈에도 초대장이 올까요?', 'The game of tag with Lumi is over. Will an invitation come again next Halloween?')}</p>
+    ${statHTML([[fmtTime(T.time), tr('모두 걸린 시간', 'Total time')], [`★ ${T.stars}/${STAGES.length * 3}`, tr('모은 별', 'Stars')], [T.candy, tr('모은 사탕', 'Candy')], [T.caught, tr('잡힌 횟수', 'Times caught')], [T.wrong, tr('틀린 답', 'Wrong answers')]])}
+    <p class="lead">${tr(`${S.grade}학년 문제로 놀았어요. 선생님께 이 화면을 보여 주세요.`, `You played with grade ${S.grade} questions. Show this screen to your teacher.`)}</p>
+    <div class="row"><button class="btn-ink" id="eTitle" autofocus>${tr('처음 화면', 'Title screen')}</button></div>`);
   $('eTitle').onclick = () => leaveToTitle();
 }
 
 function openEditor() {
-  openModal(`<h2>문제 바꾸기</h2>
-    <p class="lead">학년 묶음 "1"~"6"과 "halloween"(할로윈 상식). 문제마다 <b>q</b>는 문제 글, <b>c</b>는 보기 4개(첫 번째가 정답, 화면에서는 섞여요), <b>hint</b>는 틀렸을 때 나오는 힌트예요. 할로윈 문제의 <b>lv</b>는 1(1~2학년부터)·2(3~4학년부터)·3(5~6학년). 이 기기에만 저장되고, 함께 할 때는 방장의 문제로 풀어요.</p>
+  openModal(`<h2>${T('문제 바꾸기', 'Edit questions')}</h2>
+    <p class="lead">${T('학년 묶음 "1"~"6"과 "halloween"(할로윈 상식). 문제마다 <b>q</b>는 문제 글, <b>c</b>는 보기 4개(첫 번째가 정답, 화면에서는 섞여요), <b>hint</b>는 틀렸을 때 나오는 힌트예요. 할로윈 문제의 <b>lv</b>는 1(1~2학년부터)·2(3~4학년부터)·3(5~6학년). 이 기기에만 저장되고, 함께 할 때는 방장의 문제로 풀어요.', 'Grade sets "1" to "6" and "halloween" (Halloween trivia). In each question, <b>q</b> is the question text, <b>c</b> is the 4 choices (the first is correct; they are shuffled on screen), and <b>hint</b> shows after a wrong answer. For Halloween questions, <b>lv</b> is 1 (grade 1+), 2 (grade 3+) or 3 (grades 5–6). Saved on this device only; in co-op everyone uses the host\'s questions. Any subject works.')}</p>
     <textarea id="pj" spellcheck="false"></textarea><p class="err" id="pjErr"></p>
-    <div class="row"><button class="btn-ink ghost" id="pjDef">기본 문제로</button><button class="btn-ink ghost" id="pjClose">닫기</button><button class="btn-ink" id="pjSave">저장</button></div>`, e => { if (e.code === 'Escape') closeModal(); });
+    <div class="row"><button class="btn-ink ghost" id="pjDef">${T('기본 문제로', 'Default questions')}</button><button class="btn-ink ghost" id="pjClose">${T('닫기', 'Close')}</button><button class="btn-ink" id="pjSave">${T('저장', 'Save')}</button></div>`, e => { if (e.code === 'Escape') closeModal(); });
   $('pj').value = JSON.stringify(S.bank, null, 1);
   $('pjClose').onclick = openSettings;
-  $('pjDef').onclick = () => { $('pj').value = JSON.stringify(defaultBank(), null, 1); $('pjErr').textContent = '기본 문제를 불러왔어요. 저장을 눌러야 적용돼요.'; };
+  $('pjDef').onclick = () => { $('pj').value = JSON.stringify(defaultBank(), null, 1); $('pjErr').textContent = T('기본 문제를 불러왔어요. 저장을 눌러야 적용돼요.', 'Default questions loaded. Press Save to apply.'); };
   $('pjSave').onclick = () => {
-    let p; try { p = JSON.parse($('pj').value); } catch (e) { $('pjErr').textContent = 'JSON 형식이 맞지 않아요: ' + e.message; return; }
+    let p; try { p = JSON.parse($('pj').value); } catch (e) { $('pjErr').textContent = T('JSON 형식이 맞지 않아요: ', 'Invalid JSON: ') + e.message; return; }
     const err = validateBank(p); if (err) { $('pjErr').textContent = err; return; }
-    S.bank = p; store.set('pumpkin3-bank', JSON.stringify(p)); $('pjErr').textContent = '저장했어요.'; setTimeout(openSettings, 600);
+    S.bank = p; store.set(BANK_KEY, JSON.stringify(p)); $('pjErr').textContent = T('저장했어요.', 'Saved.'); setTimeout(openSettings, 600);
   };
 }
 function openCredits() {
-  openModal(`<h2>만든 재료</h2>
-    <p><b>삼대 710 제작.</b> © 2026 삼대710. 교실 내 비영리 사용 외 복제·수정·상업적 이용 금지.</p>
+  openModal(T(`<h2>만든 재료</h2>
+    <p><b>삼대 710 제작.</b> Built for Vibe Forge. © 2026 삼대710. 교실 내 비영리 사용 외 복제·수정·상업적 이용 금지.</p>
     <p>분장한 아이들: 지피티(ChatGPT)로 원화를 그리고 TRELLIS로 3D로 바꾼 뒤 Blender로 뼈대와 동작을 넣었어요. 만화도 지피티로 그렸어요.</p>
     <p>괴물·가구 3D 모델: <b>Scenario 3D Collection</b> (Scenario, CC BY 4.0, AI 생성) 중 골라 줄여 썼어요.</p>
     <p>효과음·음악: Stable Audio 3 Medium으로 만들었어요. 심장·정답 소리는 Web Audio로 합성했어요.</p>
     <p>3D 엔진: three.js r160 (MIT). 접속: PeerJS (MIT).</p>
-    <div class="row"><button class="btn-ink" id="crClose" autofocus>닫기</button></div>`);
+    <div class="row"><button class="btn-ink" id="crClose" autofocus>닫기</button></div>`, `<h2>Credits</h2>
+    <p><b>Made by Samdae710 (삼대710).</b> Built for Vibe Forge. © 2026 Samdae710. Non-commercial classroom use only; no copying, modifying or commercial use.</p>
+    <p>Costumed kids: concept art drawn with ChatGPT, turned into 3D with TRELLIS, then rigged and animated in Blender. The comic was also drawn with ChatGPT.</p>
+    <p>Monster and furniture 3D models: <b>Scenario 3D Collection</b> (Scenario, CC BY 4.0, AI-generated), selected and optimized.</p>
+    <p>Sound effects and music: made with Stable Audio 3 Medium. Heartbeat and answer sounds are synthesized with Web Audio.</p>
+    <p>3D engine: three.js r160 (MIT). Networking: PeerJS (MIT).</p>
+    <div class="row"><button class="btn-ink" id="crClose" autofocus>Close</button></div>`));
   $('crClose').onclick = openSettings;
 }
 
 /* ---------- 설정 ---------- */
 function openSettings() {
   const seg = (id, label, opts, cur) => `<div class="seg set" id="${id}"><span>${label}</span>${opts.map(([v, t]) => `<button data-v="${v}" aria-pressed="${v === cur}">${t}</button>`).join('')}</div>`;
-  openModal(`<h2>설정</h2>
-    ${seg('setDiff', '괴물 세기', [['auto', '학년에 맞게'], ['easy', '느림'], ['normal', '보통'], ['hard', '빠름']], S.diffSetting)}
-    ${seg('setQ', '그래픽', [['high', '고급'], ['low', '가볍게(태블릿)']], quality)}
-    ${seg('setSnd', '소리', [['on', '켜기'], ['off', '끄기']], Sound.muted ? 'off' : 'on')}
-    <ul class="howto"><li><b>움직이기</b>화면 왼쪽을 누르고 끌기</li><li><b>숨기·상자</b>오른쪽 아래 노란 단추 누르기</li><li><b>쪽지·아이템</b>사탕 단추 왼쪽의 쪽지·아이템 단추 누르기</li><li><b>사탕 던지기</b>오른쪽 아래 사탕 단추를 끌었다 놓기</li></ul>
-    <p class="howto-pc">PC: WASD 움직이기 · E 숨기·상자 · Q 아이템 · 마우스 클릭 사탕 · Tab 쪽지</p>
-    <div class="row"><button class="btn-ink ghost" id="setEdit">선생님: 문제 바꾸기</button><button class="btn-ink ghost" id="setCredit">만든 재료</button><button class="btn-ink" id="setClose" autofocus>닫기</button></div>`,
+  openModal(`<h2>${T('설정', 'Settings')}</h2>
+    ${seg('setLang', T('언어', 'Language'), [['ko', '한국어'], ['en', 'English']], LANG)}
+    ${seg('setDiff', T('괴물 세기', 'Monster speed'), T([['auto', '학년에 맞게'], ['easy', '느림'], ['normal', '보통'], ['hard', '빠름']], [['auto', 'By grade'], ['easy', 'Slow'], ['normal', 'Normal'], ['hard', 'Fast']]), S.diffSetting)}
+    ${seg('setQ', T('그래픽', 'Graphics'), T([['high', '고급'], ['low', '가볍게(태블릿)']], [['high', 'High'], ['low', 'Light (tablet)']]), quality)}
+    ${seg('setSnd', T('소리', 'Sound'), T([['on', '켜기'], ['off', '끄기']], [['on', 'On'], ['off', 'Off']]), Sound.muted ? 'off' : 'on')}
+    ${T(`<ul class="howto"><li><b>움직이기</b>화면 왼쪽을 누르고 끌기</li><li><b>숨기·상자</b>오른쪽 아래 노란 단추 누르기</li><li><b>쪽지·아이템</b>사탕 단추 왼쪽의 쪽지·아이템 단추 누르기</li><li><b>사탕 던지기</b>오른쪽 아래 사탕 단추를 끌었다 놓기</li></ul>
+    <p class="howto-pc">PC: WASD 움직이기 · E 숨기·상자 · Q 아이템 · 마우스 클릭 사탕 · Tab 쪽지</p>`, `<ul class="howto"><li><b>Move</b>Press and drag on the left side of the screen</li><li><b>Hide · Box</b>Press the yellow button at the bottom right</li><li><b>Note · Item</b>Press the note or item button left of the candy button</li><li><b>Throw candy</b>Drag and release the candy button at the bottom right</li></ul>
+    <p class="howto-pc">PC: WASD move · E hide/box/search · Q item · Mouse click candy · Tab note</p>`)}
+    <div class="row"><button class="btn-ink ghost" id="setEdit">${T('선생님: 문제 바꾸기', 'Teacher: edit questions')}</button><button class="btn-ink ghost" id="setCredit">${T('만든 재료', 'Credits')}</button><button class="btn-ink" id="setClose" autofocus>${T('닫기', 'Close')}</button></div>`,
     e => { if (e.code === 'Escape') closeModal(); });
   const bind = (id, fn) => $(id).onclick = (e) => { const b = e.target.closest('button'); if (!b) return; fn(b.dataset.v); $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); };
+  bind('setLang', v => { if (v !== LANG) setLang(v); });
   bind('setDiff', v => { S.diffSetting = v; store.set('pumpkin3-diff', v); });
   bind('setQ', v => { if (v !== quality) { store.set('pumpkin2-q', v); location.reload(); } });
   bind('setSnd', v => { Sound.setMuted(v === 'off'); $('muteIcon').textContent = Sound.muted ? '🔇' : '🔊'; });
@@ -1342,36 +1369,37 @@ function openSettings() {
 function toggleFullscreen() {
   const d = document;
   if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-  else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.catch?.(() => toast('이 기기에서는 전체 화면을 쓸 수 없어요')); }
+  else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.catch?.(() => toast(T('이 기기에서는 전체 화면을 쓸 수 없어요', 'Full screen is not available on this device'))); }
 }
-const syncFull = () => { $('fullLabel').textContent = document.fullscreenElement || document.webkitFullscreenElement ? '창 화면' : '전체 화면'; };
+const syncFull = () => { $('fullLabel').textContent = document.fullscreenElement || document.webkitFullscreenElement ? T('창 화면', 'Window') : T('전체 화면', 'Full screen'); };
 document.addEventListener('fullscreenchange', syncFull); document.addEventListener('webkitfullscreenchange', syncFull);
 
 /* ---------- 화면 전환·로비 ---------- */
 function showScreen(id) { ['loading', 'title', 'grade', 'mode', 'lobby'].forEach(s => $(s).hidden = s !== id); }
 function setTitleErr(t) { $('titleErr').textContent = t; if (t) showScreen('title'); }
-function myName() { const n = $('nameIn').value.trim().slice(0, 6) || '학생'; S.myName = n; store.set('pumpkin2-name', n); return n; }
+function myName() { const n = $('nameIn').value.trim().slice(0, T(6, 10)) || T('학생', 'Player'); S.myName = n; store.set('pumpkin2-name', n); return n; }
 function renderLobby() {
-  $('members').innerHTML = S.roster.map(r => { const ch = CHARACTERS[r.char % CHARACTERS.length]; return `<li><i style="background:${ch.color}"></i>${esc(r.name)} · ${ch.costume}${r.slot === 0 ? ' 👑' : ''}<small>${r.pending ? '들어오는 중' : r.slot === S.mySlot ? '나' : ''}</small></li>`; }).join('');
+  $('members').innerHTML = S.roster.map(r => { const ch = CHARACTERS[r.char % CHARACTERS.length]; return `<li><i style="background:${ch.color}"></i>${esc(r.name)} · ${ch.costume}${r.slot === 0 ? ' 👑' : ''}<small>${r.pending ? T('들어오는 중', 'joining') : r.slot === S.mySlot ? T('나', 'me') : ''}</small></li>`; }).join('');
   setSeg('segStage', String(S.startStage));
 }
 function setSeg(id, v) { $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); }
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // 타이틀 → 학년 → 놀이 방법 → (도입 만화) → 게임
-$('gradeGrid').innerHTML = [1, 2, 3, 4, 5, 6].map(g => `<button data-g="${g}">${g}학년<small>${g <= 2 ? '번호 쪽지 · 느린 괴물' : g <= 4 ? '느린 괴물' : '보통 괴물'}</small></button>`).join('');
+$('gradeGrid').innerHTML = [1, 2, 3, 4, 5, 6].map(g => `<button data-g="${g}">${T(`${g}학년`, `Grade ${g}`)}<small>${g <= 2 ? T('번호 쪽지 · 느린 괴물', 'Numbered notes · Slow monsters') : g <= 4 ? T('느린 괴물', 'Slow monsters') : T('보통 괴물', 'Normal monsters')}</small></button>`).join('');
 $('startBtn0').onclick = () => { Sound.init(); Sound.music(true); showScreen('grade'); $('gradeGrid').querySelector(`[data-g="${S.grade}"]`)?.focus(); };
 $('gradeGrid').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   S.grade = +b.dataset.g; store.set('pumpkin3-grade', S.grade);
-  $('modeTitle').textContent = `${S.grade}학년 · 어떻게 놀까요?`;
-  const sv = loadProgress(); $('contBtn').hidden = !sv; if (sv) $('contBtn').textContent = `▶ 이어 하기: ${saveLabel(sv)}`;
+  $('modeTitle').textContent = T(`${S.grade}학년 · 어떻게 놀까요?`, `Grade ${S.grade} · How do you want to play?`);
+  const sv = loadProgress(); $('contBtn').hidden = !sv; if (sv) $('contBtn').textContent = T(`▶ 이어 하기: ${saveLabel(sv)}`, `▶ Continue ${saveLabel(sv)}`);
   showScreen('mode');
 };
 $('gradeBack').onclick = () => showScreen('title');
 $('modeBack').onclick = () => showScreen('grade');
 $('settingsBtn').onclick = openSettings;
 $('fullBtn').onclick = toggleFullscreen;
+$('langBtn').onclick = () => setLang(T('en', 'ko'));
 // 혼자 할 때 분장 고르기
 S.char = +(store.get('pumpkin3-char') || 0);
 const costumeRow = document.createElement('div'); costumeRow.className = 'costumes'; costumeRow.id = 'costumes';
@@ -1388,22 +1416,22 @@ $('hostBtn').onclick = () => { Sound.init(); Sound.music(false); startHost(); pl
 $('joinBtn').onclick = () => { Sound.init(); Sound.music(false); startJoin(); playComic('intro'); };
 $('codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
 $('startBtn').onclick = () => {
-  if (S.roster.some(r => r.pending)) { $('lobbyStatus').textContent = '들어오는 중인 친구가 있어요. 잠깐만 기다려 주세요.'; return; }
+  if (S.roster.some(r => r.pending)) { $('lobbyStatus').textContent = T('들어오는 중인 친구가 있어요. 잠깐만 기다려 주세요.', 'A friend is still joining. Please wait a moment.'); return; }
   const sv = S.resume && S.resume.st === S.startStage ? S.resume : null;
   if (!S.run) newRun();
   if (sv) S.totals = { ...S.totals, ...sv.totals };
   launchStage(S.startStage, sv ? sv.rd : 0);
 };
 $('leaveBtn').onclick = () => leaveToTitle();
-$('segStage').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.startStage = +b.dataset.v; if (S.resume && S.resume.st !== S.startStage) { S.resume = null; $('lobbyHint').textContent = '친구에게 이 코드를 알려 주세요. 최대 4명.'; } broadcastLobby(); };
+$('segStage').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.startStage = +b.dataset.v; if (S.resume && S.resume.st !== S.startStage) { S.resume = null; $('lobbyHint').textContent = HOST_HINT(); } broadcastLobby(); };
 $('muteBtn').onclick = () => { Sound.setMuted(!Sound.muted); $('muteIcon').textContent = Sound.muted ? '🔇' : '🔊'; };
 $('muteIcon').textContent = Sound.muted ? '🔇' : '🔊';
 $('nameIn').value = S.myName;
 
 /* ---------- 시작 ---------- */
 (async function boot() {
-  await loadModels(p => { $('loadMsg').textContent = `저택 문을 여는 중… ${Math.round(p * 90)}%`; });
-  await loadKids(CHARACTERS.map(c => c.kid), p => { $('loadMsg').textContent = `친구들이 분장하는 중… ${90 + Math.round(p * 10)}%`; });
+  await loadModels(p => { $('loadMsg').textContent = T(`저택 문을 여는 중… ${Math.round(p * 90)}%`, `Opening the manor door… ${Math.round(p * 90)}%`); });
+  await loadKids(CHARACTERS.map(c => c.kid), p => { $('loadMsg').textContent = T(`친구들이 분장하는 중… ${90 + Math.round(p * 10)}%`, `Friends are putting on costumes… ${90 + Math.round(p * 10)}%`); });
   buildStageScene(0, null);
   showScreen('title');
   frame();

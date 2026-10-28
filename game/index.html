@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='32' cy='38' rx='26' ry='20' fill='%23f08a24'/%3E%3Crect x='29' y='10' width='6' height='12' rx='2' fill='%233f5a22'/%3E%3Cpath d='M20 34l6-6 6 6zM32 34l6-6 6 6zM20 44q12 8 24 0z' fill='%231b1210'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+And+White+Picture&family=Do+Hyeon&family=East+Sea+Dokdo&family=Gowun+Dodum&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+And+White+Picture&family=Creepster&family=Do+Hyeon&family=East+Sea+Dokdo&family=Gowun+Dodum&display=swap">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/examples/jsm/" } }</script>
 </head>
@@ -16,7 +16,7 @@
   <canvas id="c"></canvas>
   <div id="vignette"></div>
   <div id="danger"></div>
-  <div id="hideview" hidden><span>옷장 틈으로 밖을 보고 있어요</span></div>
+  <div id="hideview" hidden><span data-en="Peeking out through the wardrobe crack">옷장 틈으로 밖을 보고 있어요</span></div>
   <div id="flash"></div>
   <div id="cineText" hidden></div>
 
@@ -25,41 +25,41 @@
       <div class="stage-name" id="stageName">저택 1층</div>
       <div class="stage-sub" id="stageSub"></div>
     </div>
-    <div class="hud-c"><div id="timer">6:00</div><small>자정까지</small></div>
+    <div class="hud-c"><div id="timer">6:00</div><small data-en="until midnight">자정까지</small></div>
     <div class="hud-r" id="team"></div>
   </header>
 
   <div id="toasts" aria-live="polite"></div>
-  <div id="compass" hidden><span id="compassArrow"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L35 21 H25.5 V37 H14.5 V21 H5 Z"/></svg></span><span id="compassLabel">탈출문</span><b id="compassDist"></b></div>
-  <button id="detector" hidden aria-label="쪽지 감지기. 누르면 루미가 방 힌트를 알려 줘요"><span class="dicon">📜</span><span class="bars"><i></i><i></i><i></i><i></i><i></i></span><b id="detWord">차가워</b><small>누르면 루미 힌트</small></button>
+  <div id="compass" hidden><span id="compassArrow"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L35 21 H25.5 V37 H14.5 V21 H5 Z"/></svg></span><span id="compassLabel" data-en="Exit">탈출문</span><b id="compassDist"></b></div>
+  <button id="detector" hidden aria-label="쪽지 감지기. 누르면 루미가 방 힌트를 알려 줘요" data-en-label="Note detector. Press it and Lumi gives a room hint"><span class="dicon">📜</span><span class="bars"><i></i><i></i><i></i><i></i><i></i></span><b id="detWord" data-en="Cold">차가워</b><small data-en="Tap for Lumi's hint">누르면 루미 힌트</small></button>
   <div id="banner" hidden></div>
 
   <div id="bottom" hidden>
     <div class="dock">
-      <button class="chip icon" id="muteBtn" title="소리 켜고 끄기"><span class="e" id="muteIcon">🔊</span></button>
+      <button class="chip icon" id="muteBtn" title="소리 켜고 끄기" data-en-title="Sound on/off"><span class="e" id="muteIcon">🔊</span></button>
     </div>
     <!-- 오른손 단추 묶음: 사탕 단추 바로 왼쪽(태블릿에서 엄지로 누르기 좋게) -->
     <div class="hand">
       <button id="actBtn" hidden></button>
-      <button class="pbtn" id="noteBtn"><span class="e">📜</span><span class="lbl">쪽지 <b id="fragN">0/4</b></span><kbd>Tab</kbd></button>
-      <button class="pbtn" id="itemBtn" disabled><span class="e" id="itemIcon">✋</span><span class="lbl" id="itemName">빈손</span><kbd>Q</kbd></button>
+      <button class="pbtn" id="noteBtn"><span class="e">📜</span><span class="lbl"><span data-en="Note">쪽지</span> <b id="fragN">0/4</b></span><kbd>Tab</kbd></button>
+      <button class="pbtn" id="itemBtn" disabled><span class="e" id="itemIcon">✋</span><span class="lbl" id="itemName" data-en="Empty">빈손</span><kbd>Q</kbd></button>
     </div>
   </div>
   <div id="stick" hidden><div id="knob"></div></div>
-  <button id="throwBtn" hidden aria-label="사탕 던지기: 끌어서 겨누고 떼기, 짧게 누르면 가까운 괴물 쪽으로"><i id="throwKnob"><img src="assets/sprites/candy.png" alt=""></i><b id="throwN">0</b><small>던지기</small></button>
+  <button id="throwBtn" hidden aria-label="사탕 던지기: 끌어서 겨누고 떼기, 짧게 누르면 가까운 괴물 쪽으로" data-en-label="Throw candy: drag to aim and release, or tap to throw toward the nearest monster"><i id="throwKnob"><img src="assets/sprites/candy.png" alt=""></i><b id="throwN">0</b><small data-en="Throw">던지기</small></button>
 
-  <section id="note" hidden aria-label="찢어진 쪽지">
-    <div class="note-head"><h2>찢어진 쪽지</h2><span id="noteCount"></span><button class="x" id="noteClose" aria-label="닫기">✕</button></div>
+  <section id="note" hidden aria-label="찢어진 쪽지" data-en-label="Torn note">
+    <div class="note-head"><h2 data-en="Torn Note">찢어진 쪽지</h2><span id="noteCount"></span><button class="x" id="noteClose" aria-label="닫기" data-en-label="Close">✕</button></div>
     <div id="noteBody"></div>
   </section>
 
-  <section id="quiz" hidden aria-label="문제">
-    <div class="note-head"><h2 id="quizTitle">🎃 호박 상자</h2><span id="quizSub">맞히면 아이템!</span><button class="x" id="quizClose" aria-label="닫기">✕</button></div>
+  <section id="quiz" hidden aria-label="문제" data-en-label="Question">
+    <div class="note-head"><h2 id="quizTitle">🎃 호박 상자</h2><span id="quizSub">맞히면 아이템!</span><button class="x" id="quizClose" aria-label="닫기" data-en-label="Close">✕</button></div>
     <div id="quizBody"></div>
   </section>
 
   <section class="screen" id="loading">
-    <div class="title-wrap"><div class="logo small">호박 저택<br>탈출</div><p id="loadMsg">저택 문을 여는 중… 0%</p></div>
+    <div class="title-wrap"><div class="logo small" data-en="Pumpkin Manor<br>Escape">호박 저택<br>탈출</div><p id="loadMsg" data-en="Opening the manor door… 0%">저택 문을 여는 중… 0%</p></div>
   </section>
 
   <section class="screen" id="title" hidden>
@@ -67,53 +67,56 @@
     <div class="bats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="title-main">
       <h1 class="logo"><img class="lantern l1" src="assets/title/lantern.png" alt=""><span data-t="호박 저택">호박 저택</span><span data-t="탈출">탈출<img class="lantern l2" src="assets/title/lantern.png" alt=""></span></h1>
-      <p class="title-kicker">할로윈 밤의 술래잡기</p>
+      <p class="title-kicker" data-en="A Halloween night game of tag">할로윈 밤의 술래잡기</p>
       <div class="title-btns">
-        <button class="big start" id="startBtn0">시작하기</button>
-        <button class="tool" id="settingsBtn"><span class="e">⚙️</span> 설정</button>
+        <button class="big start" id="startBtn0" data-en="Start">시작하기</button>
+        <button class="tool" id="settingsBtn"><span class="e">⚙️</span> <span data-en="Settings">설정</span></button>
       </div>
       <p class="err" id="titleErr"></p>
     </div>
-    <button class="tool corner" id="fullBtn"><span class="e">⛶</span> <span id="fullLabel">전체 화면</span></button>
-    <footer class="title-foot"><b>삼대 710 제작</b><span>© 2026 삼대710. 교실 내 비영리 사용 외 복제·수정·상업적 이용 금지</span></footer>
+    <div class="corner-row">
+      <button class="tool" id="langBtn" data-en="&lt;span class=&quot;e&quot;&gt;🌐&lt;/span&gt; 한국어"><span class="e">🌐</span> English</button>
+      <button class="tool" id="fullBtn"><span class="e">⛶</span> <span id="fullLabel" data-en="Full screen">전체 화면</span></button>
+    </div>
+    <footer class="title-foot"><b data-en="Made by Samdae710 (삼대710)">삼대 710 제작</b><span class="vf">Built for Vibe Forge by 삼대710 (Samdae710)</span><span data-en="© 2026 Samdae710. Non-commercial classroom use only; no copying, modifying or commercial use.">© 2026 삼대710. 교실 내 비영리 사용 외 복제·수정·상업적 이용 금지</span></footer>
   </section>
 
   <section class="screen" id="grade" hidden>
     <div class="title-wrap">
-      <h2 class="screen-title">몇 학년인가요?</h2>
-      <p class="tagline">학년에 맞는 문제와 할로윈 상식 문제가 섞여 나와요.</p>
+      <h2 class="screen-title" data-en="What grade are you in?">몇 학년인가요?</h2>
+      <p class="tagline" data-en="You get questions for your grade mixed with Halloween trivia.">학년에 맞는 문제와 할로윈 상식 문제가 섞여 나와요.</p>
       <div class="grade-grid" id="gradeGrid"></div>
-      <button class="link" id="gradeBack">← 처음 화면</button>
+      <button class="link" id="gradeBack" data-en="← Title screen">← 처음 화면</button>
     </div>
   </section>
 
   <section class="screen" id="mode" hidden>
     <div class="title-wrap">
       <h2 class="screen-title" id="modeTitle">어떻게 놀까요?</h2>
-      <label class="field"><span>내 이름</span><input id="nameIn" maxlength="6" placeholder="이름" autocomplete="off"></label>
+      <label class="field"><span data-en="My name">내 이름</span><input id="nameIn" maxlength="6" placeholder="이름" data-en-ph="Name" autocomplete="off"></label>
       <div class="menu">
         <button class="big" id="contBtn" hidden>▶ 이어 하기</button>
-        <button class="big" id="soloBtn">혼자 하기</button>
-        <button class="big alt" id="hostBtn">친구와 함께: 방 만들기</button>
-        <div class="join"><input id="codeIn" maxlength="5" placeholder="방 코드" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="big alt" id="joinBtn">들어가기</button></div>
+        <button class="big" id="soloBtn" data-en="Play alone">혼자 하기</button>
+        <button class="big alt" id="hostBtn" data-en="With friends: create a room">친구와 함께: 방 만들기</button>
+        <div class="join"><input id="codeIn" maxlength="5" placeholder="방 코드" data-en-ph="Code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="big alt" id="joinBtn" data-en="Join">들어가기</button></div>
       </div>
-      <p class="keys">친구와 할 때는 한 명이 방을 만들고, 다른 친구들은 방 코드를 넣어요.</p>
-      <button class="link" id="modeBack">← 학년 다시 고르기</button>
+      <p class="keys" data-en="To play with friends, one person creates a room and the others enter the room code on their own devices.">친구와 할 때는 한 명이 방을 만들고, 다른 친구들은 방 코드를 넣어요.</p>
+      <button class="link" id="modeBack" data-en="← Choose grade again">← 학년 다시 고르기</button>
     </div>
   </section>
 
   <section class="screen" id="lobby" hidden>
     <div class="lobby-card">
-      <p class="eyebrow" id="lobbyRole">방 코드</p>
+      <p class="eyebrow" id="lobbyRole" data-en="Room code">방 코드</p>
       <div class="code" id="lobbyCode">·····</div>
-      <p class="lead" id="lobbyHint">친구에게 이 코드를 알려 주세요. 최대 4명.</p>
+      <p class="lead" id="lobbyHint" data-en="Tell your friends this code. Up to 4 players.">친구에게 이 코드를 알려 주세요. 최대 4명.</p>
       <ul class="members" id="members"></ul>
       <div id="hostCtl">
-        <div class="seg" id="segStage"><span>시작 층</span><button data-v="0">1층</button><button data-v="1">서고</button><button data-v="2">창고</button><button data-v="3">2층</button><button data-v="4">호박밭</button><button data-v="5">묘지</button></div>
-        <button class="big" id="startBtn">모두 출발!</button>
+        <div class="seg" id="segStage"><span data-en="Start floor">시작 층</span><button data-v="0" data-en="1F">1층</button><button data-v="1" data-en="Library">서고</button><button data-v="2" data-en="Cellar">창고</button><button data-v="3" data-en="2F">2층</button><button data-v="4" data-en="Patch">호박밭</button><button data-v="5" data-en="Graveyard">묘지</button></div>
+        <button class="big" id="startBtn" data-en="Everyone, go!">모두 출발!</button>
       </div>
       <p class="lead" id="lobbyStatus"></p>
-      <button class="link" id="leaveBtn">나가기</button>
+      <button class="link" id="leaveBtn" data-en="Leave">나가기</button>
     </div>
   </section>
 

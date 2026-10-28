@@ -1,6 +1,10 @@
 // 문제 은행: 학년별 교과 문제 + 할로윈 상식. 보기 4개 중 c[0]이 정답(화면에서는 섞는다).
 // 판마다 층 문제 3개(찢어진 쪽지)와 호박 상자 문제를 이 은행에서 뽑는다. 선생님이 시작 화면 설정에서 바꿀 수 있다.
-import { store } from './util.js';
+import { store, T, LANG } from './util.js';
+import * as EN from './questions_en.js';
+
+// 선생님이 고친 문제는 언어마다 따로 저장한다
+export const BANK_KEY = T('pumpkin3-bank', 'pumpkin3-bank-en');
 
 // lv: 1 쉬움(1~2학년도), 2 보통(3~4학년부터), 3 어려움(5~6학년)
 export const HALLOWEEN = [
@@ -336,19 +340,19 @@ export const GRADES = {
 // 선생님이 바꾼 은행(이 기기에만 저장). 형식은 { "1": [...], ..., "6": [...], "halloween": [...] }
 export function loadBank() {
   try {
-    const b = JSON.parse(store.get('pumpkin3-bank'));
+    const b = JSON.parse(store.get(BANK_KEY));
     if (b && validateBank(b) === '') return b;
   } catch (e) { /* 기본 은행 */ }
   return defaultBank();
 }
-export function defaultBank() { return JSON.parse(JSON.stringify({ ...GRADES, halloween: HALLOWEEN })); }
+export function defaultBank() { return JSON.parse(JSON.stringify(LANG === 'en' ? { ...EN.GRADES, halloween: EN.HALLOWEEN } : { ...GRADES, halloween: HALLOWEEN })); }
 export function validateBank(b) {
   for (const k of ['1', '2', '3', '4', '5', '6', 'halloween']) {
     const list = b[k];
-    if (!Array.isArray(list) || list.length < 4) return `"${k}" 묶음에 문제가 4개 이상 있어야 해요.`;
+    if (!Array.isArray(list) || list.length < 4) return T(`"${k}" 묶음에 문제가 4개 이상 있어야 해요.`, `Set "${k}" needs at least 4 questions.`);
     for (const it of list) {
-      if (!it || typeof it.q !== 'string' || !it.q.trim()) return `"${k}" 묶음: 문제 글(q)이 비어 있어요.`;
-      if (!Array.isArray(it.c) || it.c.length !== 4 || it.c.some(s => typeof s !== 'string' || !s.trim())) return `"${k}" 묶음 "${it.q.slice(0, 12)}…": 보기(c)는 글 4개여야 해요(첫 번째가 정답).`;
+      if (!it || typeof it.q !== 'string' || !it.q.trim()) return T(`"${k}" 묶음: 문제 글(q)이 비어 있어요.`, `Set "${k}": a question text (q) is empty.`);
+      if (!Array.isArray(it.c) || it.c.length !== 4 || it.c.some(s => typeof s !== 'string' || !s.trim())) return T(`"${k}" 묶음 "${it.q.slice(0, 12)}…": 보기(c)는 글 4개여야 해요(첫 번째가 정답).`, `Set "${k}" "${it.q.slice(0, 16)}…": choices (c) must be 4 texts (the first one is correct).`);
     }
   }
   return '';
@@ -435,7 +439,7 @@ const MATH = {
 };
 export function mathQuiz(grade, r = Math.random) {
   const g = Math.min(6, Math.max(1, grade | 0));
-  return pickOne(r, MATH[g])(r);
+  return pickOne(r, (LANG === 'en' ? EN.MATH : MATH)[g])(r);
 }
 
 // 한 판의 문제 고르기: 층마다 쪽지 문제 notes[i]개(교과·할로윈 섞음)
