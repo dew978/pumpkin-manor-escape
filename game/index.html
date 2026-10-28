@@ -36,11 +36,14 @@
 
   <div id="bottom" hidden>
     <div class="dock">
-      <button class="chip" id="noteBtn"><span class="e">📜</span> 쪽지 <b id="fragN">0/4</b> <kbd>Tab</kbd></button>
-      <button class="chip" id="itemBtn" disabled><span class="e" id="itemIcon">✋</span> <span id="itemName">빈손</span> <kbd>Q</kbd></button>
       <button class="chip icon" id="muteBtn" title="소리 켜고 끄기"><span class="e" id="muteIcon">🔊</span></button>
     </div>
-    <button id="actBtn" hidden></button>
+    <!-- 오른손 단추 묶음: 사탕 단추 바로 왼쪽(태블릿에서 엄지로 누르기 좋게) -->
+    <div class="hand">
+      <button id="actBtn" hidden></button>
+      <button class="pbtn" id="noteBtn"><span class="e">📜</span><span class="lbl">쪽지 <b id="fragN">0/4</b></span><kbd>Tab</kbd></button>
+      <button class="pbtn" id="itemBtn" disabled><span class="e" id="itemIcon">✋</span><span class="lbl" id="itemName">빈손</span><kbd>Q</kbd></button>
+    </div>
   </div>
   <div id="stick" hidden><div id="knob"></div></div>
   <button id="throwBtn" hidden aria-label="사탕 던지기: 끌어서 겨누고 떼기, 짧게 누르면 가까운 괴물 쪽으로"><i id="throwKnob"><img src="assets/sprites/candy.png" alt=""></i><b id="throwN">0</b><small>던지기</small></button>

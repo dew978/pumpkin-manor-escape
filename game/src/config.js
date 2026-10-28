@@ -29,7 +29,7 @@ const DOORS = [9, 10, 11, 19, 20, 21];
 
 export const STAGES = [
   {
-    id: 1, name: '저택 1층', sub: '현관 · 도서관 · 식당', style: 'manor', time: 840, notes: 2,
+    id: 1, name: '저택 1층', sub: '현관 · 도서관 · 식당', style: 'manor', time: 480,
     fog: 0x150c20, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -60,7 +60,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 2, name: '지하 서고', sub: '책장 미로 · 해골 기사', style: 'cellar', time: 1170, notes: 3,
+    id: 2, name: '지하 서고', sub: '책장 미로 · 해골 기사', style: 'cellar', time: 480,
     fog: 0x0b0f18, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -91,7 +91,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 3, name: '지하 창고', sub: '나무통 미로 · 거미 둥지', style: 'cellar', time: 1170, notes: 3,
+    id: 3, name: '지하 창고', sub: '나무통 미로 · 거미 둥지', style: 'cellar', time: 480,
     fog: 0x0d0b10, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -122,7 +122,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 4, name: '저택 2층', sub: '침실 · 인형 방 · 서재', style: 'manor', time: 1170, notes: 3,
+    id: 4, name: '저택 2층', sub: '침실 · 인형 방 · 서재', style: 'manor', time: 480,
     fog: 0x170b1c, ambient: 0.05,
     map: withDoors([
       TOP,
@@ -153,7 +153,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 5, name: '호박밭', sub: '허수아비 마당 · 덩굴 미로', style: 'garden', time: 1170, notes: 3,
+    id: 5, name: '호박밭', sub: '허수아비 마당 · 덩굴 미로', style: 'garden', time: 480,
     fog: 0x10140c, ambient: 0.06,
     map: withDoors([
       TOP,
@@ -184,7 +184,7 @@ export const STAGES = [
     ], DOORS),
   },
   {
-    id: 6, name: '묘지 정원', sub: '안개 낀 묘지 · 까마귀 박사 · 마지막 층', style: 'garden', time: 1170, notes: 3,
+    id: 6, name: '묘지 정원', sub: '안개 낀 묘지 · 까마귀 박사 · 마지막 층', style: 'garden', time: 480,
     fog: 0x0c1612, ambient: 0.06,
     map: withDoors([
       TOP,
@@ -253,7 +253,7 @@ export const CANDY_PER_FLOOR = 12;
 // 괴물 자리: 느림(1~4학년 기본)에서는 거미를 빼서 길목을 막지 않게 한다(아이 플레이 점검 2026-10-27)
 export const monsterSpots = (spots, diff) => spots.mon.filter(s => !(diff === 'easy' && s.ch === 'x'));
 
-// 쪽지 찾기: 층마다 쪽지 notes장을 차례로 찾는다. 쪽지 한 장마다 가구 10곳을 새로 골라 그중 4곳에 조각을 넣는다(나머지는 꽝, 작은 보상)
+// 쪽지 찾기: 층마다 쪽지 한 장(4조각)을 모아 이어 붙이면 문제가 되고, 풀면 탈출문이 열린다. 가구 10곳 중 4곳에 조각을 넣는다(나머지는 꽝, 작은 보상)
 export const SEARCH_SPOTS = 10;
 export const SEARCH_LOCK = 6;    // 가구 문제를 틀리면 그 가구가 잠기는 시간(초). 다시 오면 다른 문제가 나온다
 export const CHEST_N = 5;         // 층마다 호박 상자 문제 수(나머지 묶음은 가구 문제)

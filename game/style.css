@@ -76,6 +76,19 @@ kbd { font-family: var(--f-num); font-size: 12px; color: var(--dim); border: 1px
 .chip:hover:not(:disabled) { border-color: var(--pumpkin); }
 .chip:disabled { opacity: .5; cursor: default; }
 .chip.ready { border-color: var(--candle); box-shadow: 0 0 18px rgba(255, 210, 122, .45); }
+.hand { display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+/* 쪽지·아이템 단추: 사탕 단추 왼쪽에 나란히, 손가락으로 누르기 좋은 크기 */
+.pbtn { position: relative; display: grid; justify-items: center; align-content: center; gap: 2px; width: 92px; height: 92px; padding: 0; border-radius: 22px;
+  background: rgba(31, 21, 41, .92); border: 3px solid var(--plum-2); font-size: 15px; line-height: 1.1; touch-action: manipulation; }
+.pbtn .e { font-family: var(--f-emoji); font-size: 34px; line-height: 1; }
+.pbtn .lbl { white-space: nowrap; }
+.pbtn b { font-family: var(--f-num); font-weight: 400; font-size: 17px; }
+.pbtn kbd { position: absolute; top: -9px; right: -6px; font-size: 11px; background: var(--ink); }
+.pbtn:hover:not(:disabled) { border-color: var(--pumpkin); }
+.pbtn:active:not(:disabled) { transform: translateY(2px); }
+.pbtn:disabled { opacity: .5; cursor: default; }
+.pbtn.ready { border-color: var(--candle); box-shadow: 0 0 18px rgba(255, 210, 122, .45); }
+.pbtn.ready#itemBtn { border-color: var(--mint); box-shadow: 0 0 16px rgba(143, 224, 201, .5); }
 #actBtn { font-family: var(--f-num); font-size: 21px; padding: 12px 22px; border-radius: 14px; background: var(--candle); color: var(--ink); border: 0; box-shadow: 0 0 26px rgba(255, 210, 122, .45); }
 #stick { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: 90px; width: 130px; height: 130px; border-radius: 50%; background: rgba(255, 255, 255, .06); border: 2px solid rgba(255, 255, 255, .15); touch-action: none; }
 #knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255, 210, 122, .35); border: 2px solid rgba(255, 210, 122, .6); }
@@ -292,10 +305,10 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 #compass.exit #compassDist { color: var(--mint); }
 #stick { opacity: 0; transition: opacity .15s; width: 128px; height: 128px; pointer-events: none; }
 #stick.on { opacity: 1; }
-.chip.ready#itemBtn { border-color: var(--mint); box-shadow: 0 0 16px rgba(143, 224, 201, .5); }
 @media (pointer: coarse) {
   .chip { padding: 12px 16px; font-size: 17px; }
   #actBtn { font-size: 24px; padding: 16px 26px; }
+  .pbtn kbd { display: none; }
 }
 .piece:has(.num) { padding-left: 34px; }
 .slot .piece { font-size: 16px; }
@@ -328,7 +341,7 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 .big.glue { width: 100%; margin-top: 12px; font-size: 24px; }
 
 /* 쪽지를 주울 때 뜨는 대사창(게임은 멈추지 않는다, 누르면 다음 대사) */
-#dialog { position: absolute; z-index: 3; left: 0; right: 0; margin: 0 auto; bottom: 92px; width: min(660px, calc(100% - 300px)); min-width: 340px; display: flex; gap: 14px; align-items: center;
+#dialog { position: absolute; z-index: 3; left: 0; right: 0; margin: 0 auto; bottom: 112px; width: min(660px, calc(100% - 300px)); min-width: 340px; display: flex; gap: 14px; align-items: center;
   background: rgba(22, 14, 32, .95); border: 2px solid var(--candle); border-radius: 18px; padding: 10px 44px 10px 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55); cursor: pointer; }
 #dialog.in { animation: dlgIn .22s ease-out; }
 @keyframes dlgIn { from { opacity: 0; transform: translateY(14px); } }
@@ -338,7 +351,7 @@ h1.logo span::before { content: attr(data-t); position: absolute; inset: 0; z-in
 #dialog .line { margin: 2px 0 0; font-size: 18px; line-height: 1.5; min-height: 3em; word-break: keep-all; }
 #dialog .next { position: absolute; right: 16px; bottom: 10px; font-size: 14px; color: var(--candle); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-#app.dlg-on #note { --dlg-space: 206px; }
+#app.dlg-on #note { --dlg-space: 226px; }
 @media (max-width: 760px) { #app.dlg-on #note { --dlg-space: 266px; } #dialog { width: calc(100% - 24px); min-width: 0; bottom: 150px; } #dialog .face { width: 60px; height: 60px; } #dialog .line { font-size: 16px; } }
 /* 낮은 화면에서는 쪽지 창이 감지기 자리까지 올라가도 된다 */
 @media (max-height: 700px) { #note { max-height: calc(100% - var(--dlg-space) - 64px); } }

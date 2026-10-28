@@ -389,6 +389,7 @@ function loadProgress() {
   try {
     const s = JSON.parse(store.get(SAVE_KEY) || 'null');
     if (!s || s.grade !== S.grade || Date.now() - s.at > SAVE_DAYS * 864e5 || !(s.st >= 0 && s.st < STAGES.length)) return null;
+    s.rd = Math.min(s.rd | 0, (STAGES[s.st].notes || 1) - 1);   // 쪽지 수가 줄었으면(예전 저장) 그 층 처음부터
     if (s.st === 0 && !s.rd) return null;   // 1층 처음이면 이어 할 것이 없다
     return s;
   } catch (e) { return null; }
@@ -453,7 +454,7 @@ function beginStage(msg) {
   const st = STAGES[msg.st];
   $('stageName').textContent = st.name; updateStageSub();
   renderNote(); updateItemBtn();
-  toast(msg.late ? `${st.name} — 친구들과 함께 ${S.round + 1}번째 쪽지를 찾아요!` : S.round ? `${st.name} — ${S.round + 1}번째 쪽지부터 다시 찾아요!` : `${st.name} — 쪽지 ${S.puzzles.length}장을 차례로 찾아요. 한 장은 4조각이에요!`, 4200);
+  toast(msg.late ? `${st.name} — 친구들과 함께 쪽지를 찾아요!` : S.round ? `${st.name} — ${S.round + 1}번째 쪽지부터 다시 찾아요!` : S.puzzles.length > 1 ? `${st.name} — 쪽지 ${S.puzzles.length}장을 차례로 찾아요. 한 장은 4조각이에요!` : `${st.name} — 쪽지 4조각을 모아 문제를 풀면 탈출문이 열려요!`, 4200);
   // 루미가 찾는 법과 첫 방 힌트를 알려 준다
   setTimeout(() => {
     if (S.stageIdx !== msg.st || !S.inGame) return;
@@ -555,7 +556,7 @@ function makeMonsterActor(spec, s) {
 
 function updateStageSub() {
   const st = STAGES[S.stageIdx], n = S.puzzles?.length || 1;
-  $('stageSub').textContent = `${S.stageIdx + 1} / ${STAGES.length}층 · 쪽지 ${S.round + 1} / ${n}장 · ${st.sub}`;
+  $('stageSub').textContent = `${S.stageIdx + 1} / ${STAGES.length}층${n > 1 ? ` · 쪽지 ${S.round + 1} / ${n}장` : ''} · ${st.sub}`;
 }
 // 다음 쪽지로: 조각·쪽지 창·뒤질 가구 표시를 새로 시작한다
 function startNote(rd) {
@@ -1326,7 +1327,7 @@ function openSettings() {
     ${seg('setDiff', '괴물 세기', [['auto', '학년에 맞게'], ['easy', '느림'], ['normal', '보통'], ['hard', '빠름']], S.diffSetting)}
     ${seg('setQ', '그래픽', [['high', '고급'], ['low', '가볍게(태블릿)']], quality)}
     ${seg('setSnd', '소리', [['on', '켜기'], ['off', '끄기']], Sound.muted ? 'off' : 'on')}
-    <ul class="howto"><li><b>움직이기</b>화면 왼쪽을 누르고 끌기</li><li><b>숨기·상자</b>아래 노란 단추 누르기</li><li><b>아이템</b>아래 아이템 단추 누르기</li><li><b>사탕 던지기</b>오른쪽 아래 사탕 단추를 끌었다 놓기</li></ul>
+    <ul class="howto"><li><b>움직이기</b>화면 왼쪽을 누르고 끌기</li><li><b>숨기·상자</b>오른쪽 아래 노란 단추 누르기</li><li><b>쪽지·아이템</b>사탕 단추 왼쪽의 쪽지·아이템 단추 누르기</li><li><b>사탕 던지기</b>오른쪽 아래 사탕 단추를 끌었다 놓기</li></ul>
     <p class="howto-pc">PC: WASD 움직이기 · E 숨기·상자 · Q 아이템 · 마우스 클릭 사탕 · Tab 쪽지</p>
     <div class="row"><button class="btn-ink ghost" id="setEdit">선생님: 문제 바꾸기</button><button class="btn-ink ghost" id="setCredit">만든 재료</button><button class="btn-ink" id="setClose" autofocus>닫기</button></div>`,
     e => { if (e.code === 'Escape') closeModal(); });
