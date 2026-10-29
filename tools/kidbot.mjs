@@ -13,7 +13,7 @@ const TRACE = process.env.TRACE ? [] : null;   // TRACE=1이면 처음 실패한
 function play(stageIdx, diff, seed, grade) {
   if (TRACE) TRACE.length = 0;
   const q = pickQuestions(defaultBank(), grade, { notes: STAGES.map(s => s.notes || 1), math: true });
-  const sim = new Sim({ stageIdx, puzzles: q.floors[stageIdx], chestQuiz: q.sets[stageIdx], roster: [{ slot: 0, name: '학생', char: 0 }], diff, seed });
+  const sim = new Sim({ stageIdx, puzzles: q.floors[stageIdx], roster: [{ slot: 0, name: '학생', char: 0 }], diff, seed });
   const me = { x: sim.spawn.c, z: sim.spawn.r, path: [], repath: 0, notice: 0, wait: 0, stage: 'collect', fled: 0 };
   const dt = 1 / 30, g = sim.g, pass = (c, r) => !g.solid(c, r);
   let t = 0;

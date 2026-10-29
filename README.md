@@ -25,6 +25,10 @@ A 3D Halloween hide-and-seek escape game for elementary classrooms. Alone or wit
 
 Teachers: **Settings → Teacher: edit questions** replaces the questions with your own (JSON, any subject). **Settings → Monster speed** adjusts difficulty.
 
+**Questions don't repeat:** box and furniture questions come from a shuffled deck on each device, with no repeats during a whole game (retrying a floor keeps drawing new ones), mixed with math questions generated with fresh numbers each time. Retrying a floor also swaps its note question.
+
+**Co-op connection:** if a friend's connection drops, their screen stays in the game and reconnects to the same seat for up to a minute while the host holds the seat (📶). Note: PeerJS's public relay (TURN) server is currently not responding, so co-op needs devices that can reach each other directly; some school Wi-Fi networks block this.
+
 ## Tech
 
 Static web app (no build step, no backend): three.js r160, ES modules, PeerJS (WebRTC) for co-op. The host device runs the game simulation (`game/src/sim.js`) and friends receive the state. English and Korean text live side by side in the code (`T(ko, en)` in `game/src/util.js`); English questions are in `game/src/questions_en.js`.

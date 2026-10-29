@@ -126,7 +126,7 @@ export class Sim {
   toast(msg, slot = -1) { this.ev({ k: 'toast', msg, slot }); }
   snd(n, x, z, slot = -1) { this.ev({ k: 'snd', n, x, z, slot }); }
   teleport(p, x, z) { p.x = x; p.z = z; p.tp = { seq: p.tp.seq + 1, x, z }; }
-  active(p) { return p.hidden < 0 && p.caged < 0 && !p.escaped && p.invuln <= 0; }
+  active(p) { return p.hidden < 0 && p.caged < 0 && !p.escaped && p.invuln <= 0 && !p.off; }
   pass = (c, r) => !this.g.solid(c, r);
 
   // 각 기기가 보내는 내 위치
@@ -135,6 +135,8 @@ export class Sim {
     p.x = x; p.z = z; p.face = face; p.moving = moving;
   }
   removePlayer(slot) { this.players.delete(slot); }
+  // 연결이 잠깐 끊긴 친구: 자리는 남겨 두고(다시 들어오면 그대로 이어서) 괴물·탈출 판정에서는 뺀다
+  setOffline(slot, off) { const p = this.players.get(slot); if (p) { p.off = off; if (!off) p.invuln = Math.max(p.invuln, 3); } }
   // 층이 진행 중일 때 들어온(다시 들어온) 친구: 시작 자리에서 잠깐 무적으로 시작
   addPlayer(r) {
     if (this.players.has(r.slot)) return;
@@ -380,7 +382,7 @@ export class Sim {
       const cg = this.cages[0];
       p.caged = 0; this.teleport(p, cg.c, cg.r); this.snd('cage', cg.c, cg.r);
       msg += T(' 새장에 갇혔어요. 친구가 구해 줘야 해요!', ' Locked in the ghost cage. A friend has to rescue you!');
-      const free = [...this.players.values()].filter(o => o.caged < 0 && !o.escaped);
+      const free = [...this.players.values()].filter(o => o.caged < 0 && !o.escaped && !o.off);
       if (!free.length) this.gameOver('caught');
     }
     this.toast(msg);
@@ -477,7 +479,7 @@ export class Sim {
     }
     if (m.state === 'chase' || m.state === 'alert') {
       const p = this.players.get(m.target);
-      if (!p || p.caged >= 0 || p.escaped) { m.state = 'patrol'; m.path = []; return; }
+      if (!p || p.caged >= 0 || p.escaped || p.off) { m.state = 'patrol'; m.path = []; return; }
       if (seen === p || (p.hidden < 0 && this.perceive(m, p))) { m.lastSeen = { x: p.x, z: p.z }; m.lostT = 0; }
       else m.lostT += dt;
     }
@@ -593,7 +595,7 @@ export class Sim {
         if (p.hideT > 12) { p.hidden = -1; p.invuln = 0.8; this.toast(T('옷장 안이 너무 답답해요! 밖으로 나왔어요', 'It got too stuffy in the wardrobe! You climbed out'), p.slot); this.snd('door_open', p.x, p.z); }
         else if (p.hideT > 9 && p.hideT - dt <= 9) this.toast(T('옷장에 오래 있을 수 없어요. 3초 뒤에 나가요', "You can't stay in the wardrobe long. Out in 3 seconds"), p.slot);
       }
-      if (p.caged >= 0 || p.escaped || p.hidden >= 0) continue;
+      if (p.caged >= 0 || p.escaped || p.hidden >= 0 || p.off) continue;
       // 줍기
       for (const cd of this.candies) if (!cd.taken && Math.hypot(cd.x - p.x, cd.z - p.z) < 0.8) {
         cd.taken = true; this.stats.candy++; p.candy++; this.snd('pickup', p.x, p.z, p.slot);
@@ -607,7 +609,7 @@ export class Sim {
     // 구출: 갇히지 않은 친구가 새장 옆에 1.5초
     this.cages.forEach((cg, i) => {
       const caged = [...this.players.values()].filter(p => p.caged === i);
-      const helper = [...this.players.values()].find(p => p.caged < 0 && !p.escaped && p.hidden < 0 && Math.hypot(cg.c - p.x, cg.r - p.z) < 1.6);
+      const helper = [...this.players.values()].find(p => p.caged < 0 && !p.escaped && p.hidden < 0 && !p.off && Math.hypot(cg.c - p.x, cg.r - p.z) < 1.6);
       if (caged.length && helper) {
         cg.rescueT += dt;
         if (cg.rescueT >= 1.5) {
@@ -629,7 +631,8 @@ export class Sim {
     for (const m of this.monsters) this.stepMonster(m, dt);
     this.lures = this.lures.filter(L => !L.gone);
 
-    const ps = [...this.players.values()];
+    // 연결이 끊긴 친구는 기다리지 않는다(남은 친구가 모두 나가면 층을 깬다)
+    const ps = [...this.players.values()].filter(p => !p.off || p.escaped);
     if (this.pz.open && ps.some(p => p.escaped) && ps.every(p => p.escaped || p.caged >= 0)) {
       this.phase = 'clear';
       // 별: 탈출 1 + 시간 1/3 이상 남김 1 + 사탕 60% 이상 1
@@ -643,7 +646,7 @@ export class Sim {
     return {
       t: 's', st: this.stageIdx, rd: this.round, ph: this.phase, why: this.overReason, tm: Math.round(this.time * 10) / 10,
       p: [...this.players.values()].map(p => [p.slot, +p.x.toFixed(2), +p.z.toFixed(2), +p.face.toFixed(2),
-        (p.hidden >= 0 ? 1 : 0) | (p.caged >= 0 ? 2 : 0) | (p.escaped ? 4 : 0) | (p.moving ? 8 : 0) | (p.invuln > 0 ? 16 : 0) | (p.fastT > 0 ? 32 : 0),
+        (p.hidden >= 0 ? 1 : 0) | (p.caged >= 0 ? 2 : 0) | (p.escaped ? 4 : 0) | (p.moving ? 8 : 0) | (p.invuln > 0 ? 16 : 0) | (p.fastT > 0 ? 32 : 0) | (p.off ? 64 : 0),
         p.item ? ITEM_CODES.indexOf(p.item) : -1, p.name, p.char, p.tp.seq, p.tp.x, p.tp.z, p.hidden, p.candy]),
       m: this.monsters.map(m => [+m.x.toFixed(2), +m.z.toFixed(2), +m.face.toFixed(2), STATE_CODES[m.blindT > 0 ? 'blind' : m.state] ?? 0]),
       f: this.fragments.map(f => [f.x, f.z, f.taken ? 1 : 0]),

@@ -4,15 +4,15 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { STAGES, MONSTERS, CHARACTERS, EDGE_COLORS, PLAYER_SPEED, diffForGrade, monsterSpots, SEARCHABLE, SEARCH_CODES, CHEST_N, roomName } from './config.js';
-import { loadBank, defaultBank, validateBank, pickQuestions, BANK_KEY } from './questions.js';
+import { STAGES, MONSTERS, CHARACTERS, EDGE_COLORS, PLAYER_SPEED, diffForGrade, monsterSpots, SEARCHABLE, SEARCH_CODES, roomName } from './config.js';
+import { loadBank, defaultBank, validateBank, pickQuestions, makeDeck, BANK_KEY } from './questions.js';
 import { loadModels, spawnModel, modelSize, glowTexture } from './assets.js';
 import { loadKids, makeKid, playKid, hasKid } from './chars.js';
 import { playComic, closeComic, comicOpen } from './comic.js';
 import { say, fragLines, lumiLine, clearDialog, dialogOpen, STAGE_INTRO, AFTER_COMIC } from './dialog.js';
 import { buildWorld, fadeUniform, labelSprite } from './world.js';
 import { Sim, ITEM_CODES, THROW_RANGE, LURE_R } from './sim.js';
-import { hostRoom, joinRoom } from './net.js';
+import { hostRoom, joinRoom, MAX_PLAYERS } from './net.js';
 import { parseMap, slideMove, tileOf } from './grid.js';
 import { Sound } from './audio.js';
 import { josa, store, esc, fmtTime, T, LANG, setLang } from './util.js';
@@ -112,7 +112,7 @@ const S = {
   monsters: [], fragments: [], items: [], cageProg: [],
   me: { x: 0, z: 0, face: Math.PI, moving: false, flags: 0, item: -1, tpSeq: 0, hiddenIdx: -1, candy: 0 },
   heartT: 0, shake: 0, totals: { time: 0, caught: 0, stolen: 0, wrong: 0, items: 0, candy: 0, stars: 0 },
-  chestQuiz: [], chestOpen: [], candies: [], candyN: 0,
+  chestOpen: [], candies: [], candyN: 0,
   flights: [], lureFx: new Map(),   // 날아가는 사탕, 바닥에 떨어진 사탕
   searchFx: [], searchList: null, fragList: null, searching: null, leadSeen: 0, chestSeen: 0, seen: new Set(), lastStart: null, resume: null,   // 뒤질 가구, 쪽지 위치(감지기·힌트용)
 };
@@ -328,15 +328,32 @@ async function startHost() {
       },
       // 친구에게는 아직 아무도 고르지 않은 분장을 준다
       join: (slot) => { const used = new Set(S.roster.map(r => r.char)); const char = [0, 1, 2, 3].find(c => !used.has(c)) ?? slot; S.roster.push({ slot, name: T(`친구${slot}`, `Friend ${slot}`), char, pending: true }); broadcastLobby(); },
+      held: (slot) => S.roster.some(r => r.slot === slot && r.off),
       leave: (slot) => {
         const p = S.roster.find(r => r.slot === slot);
-        S.roster = S.roster.filter(r => r.slot !== slot);
-        if (S.inGame) { S.sim?.removePlayer(slot); removePlayerActor(slot); toast(T(`${josa(p?.name || '친구', '이가')} 나갔어요`, `${p?.name || 'A friend'} left`)); }
-        broadcastLobby();
+        // 게임 중에 끊기면 1분 동안 자리를 남겨 둔다(다시 들어오면 그 자리에서 이어서)
+        if (S.inGame && p && !p.pending) {
+          p.off = true; S.sim?.setOffline(slot, true); clearTimeout(p.dropT);
+          p.dropT = setTimeout(() => dropMember(slot), REJOIN_MS);
+          toast(T(`📶 ${josa(p.name, '이가')} 연결이 끊겼어요. 1분 동안 다시 들어오기를 기다려요`, `📶 ${p.name} lost the connection. Waiting 1 minute for them to come back`));
+          return;
+        }
+        dropMember(slot);
       },
       data: (m, slot) => {
         if (m.t === 'hello') {
-          const r = S.roster.find(q => q.slot === slot); if (r) { r.name = String(m.name || '').slice(0, 10) || T(`친구${slot}`, `Friend ${slot}`); r.pending = false; }
+          const id = String(m.id || '').slice(0, 24);
+          let r = S.roster.find(q => q.slot === slot);
+          const prev = id && S.roster.find(q => q.id === id && q !== r);
+          if (prev) {
+            // 다시 들어온 친구: 새 연결을 원래 자리로 옮긴다(남아 있던 옛 연결은 닫힘)
+            S.roster = S.roster.filter(q => q !== r); S.link.move(slot, prev.slot); slot = prev.slot; r = prev;
+            clearTimeout(r.dropT); r.off = false; S.sim?.setOffline(slot, false);
+            if (S.inGame) toast(T(`📶 ${josa(r.name, '이가')} 다시 들어왔어요`, `📶 ${r.name} is back`));
+          } else if (S.roster.filter(q => !q.pending).length >= MAX_PLAYERS) {
+            S.roster = S.roster.filter(q => q !== r); S.link.drop(slot, { t: 'full' }); broadcastLobby(); return;
+          }
+          if (r) { r.name = String(m.name || '').slice(0, 10) || T(`친구${slot}`, `Friend ${slot}`); r.pending = false; r.id = id; }
           broadcastLobby();
           if (S.inGame && S.sim && S.lastStart && S.sim.phase === 'play' && r) {
             // 층이 진행 중이면 지금 쪽지부터 바로 함께한다(시작 자리에서)
@@ -351,6 +368,15 @@ async function startHost() {
     });
   } catch (e) { $('lobbyStatus').textContent = e.message; }
 }
+const REJOIN_MS = 60000;
+// 친구를 명단·게임에서 뺀다(나갔거나, 끊긴 뒤 1분 안에 돌아오지 않음)
+function dropMember(slot) {
+  const p = S.roster.find(r => r.slot === slot); if (!p) return;
+  clearTimeout(p.dropT);
+  S.roster = S.roster.filter(r => r !== p);
+  if (S.inGame) { S.sim?.removePlayer(slot); removePlayerActor(slot); if (!p.pending) toast(T(`${josa(p.name || '친구', '이가')} 나갔어요`, `${p.name || 'A friend'} left`)); }
+  broadcastLobby();
+}
 // 방장이 도입 만화를 보는 동안에도 방 코드를 화면 위에 띄워 둔다(친구들이 먼저 들어올 수 있게)
 function showCodeBadge(code) {
   let b = $('codeBadge');
@@ -364,19 +390,37 @@ function broadcastLobby() {
   if (S.link) for (const slot of S.link.conns.keys()) S.link.send(slot, { t: 'lobby', roster: S.roster, stage: S.startStage, you: slot });
 }
 
+// 이 탭의 이름표: 끊겼다 다시 들어오면 방장이 원래 자리로 돌려준다(새로고침해도 같은 탭이면 그대로)
+const netId = (() => {
+  try { let v = sessionStorage.getItem('pumpkin-net-id'); if (!v) { v = Math.random().toString(36).slice(2, 12); sessionStorage.setItem('pumpkin-net-id', v); } return v; }
+  catch (e) { return Math.random().toString(36).slice(2, 12); }
+})();
+const JOIN_ERR = {
+  'peer-unavailable': T('그 코드의 방을 찾지 못했어요. 코드를 다시 확인해 주세요.', 'No room found with that code. Please check the code.'),
+  timeout: T('방 찾기 서버에 연결하지 못했어요. 인터넷을 확인해 주세요.', 'Could not reach the room server. Please check the internet.'),
+  unreachable: T('방은 찾았는데 방장 기기와 이어지지 않아요. 같은 와이파이인지 확인하고 다시 들어가 주세요.', 'Found the room, but could not connect to the host device. Check you are on the same Wi-Fi and join again.'),
+};
 async function startJoin() {
   const code = $('codeIn').value.trim().toUpperCase();
   if (code.length !== 5) { setTitleErr(T('방 코드 5글자를 넣어 주세요.', 'Enter the 5-letter room code.')); return; }
   setTitleErr('');
-  S.mode = 'client'; S.roster = []; S.mySlot = -1;
+  S.mode = 'client'; S.roster = []; S.mySlot = -1; S.rejoin = null;
   showScreen('lobby'); $('lobbyCode').textContent = code; $('lobbyRole').textContent = T('들어간 방', 'Joined room');
   $('lobbyHint').textContent = T('방장이 시작하면 함께 들어가요.', 'You will start together when the host starts.'); $('hostCtl').hidden = true; $('lobbyStatus').textContent = T('연결하는 중…', 'Connecting…'); $('members').innerHTML = '';
+  connectClient(code);
+}
+async function connectClient(code) {
+  let link = null;
   try {
-    S.link = await joinRoom(code, {
+    link = await joinRoom(code, {
       status: (s, d) => {
-        if (s === 'connected') { $('lobbyStatus').textContent = T('연결됐어요. 방장을 기다리는 중', 'Connected. Waiting for the host'); S.link.send({ t: 'hello', name: myName() }); }
-        else if (s === 'closed') { leaveToTitle(T('방장과 연결이 끊겼어요.', 'Lost the connection to the host.')); }
-        else if (s === 'error') { leaveToTitle(d === 'timeout' || d === 'peer-unavailable' ? T('그 코드의 방을 찾지 못했어요. 코드를 다시 확인해 주세요.', 'No room found with that code. Please check the code.') : T(`연결 문제: ${d}`, `Connection problem: ${d}`)); }
+        if (S.link !== link) return;
+        if (s === 'connected') {
+          if (S.rejoin) { clearTimeout(S.rejoin.giveUp); S.rejoin = null; netNotice(''); toast(T('📶 다시 연결됐어요!', '📶 Reconnected!')); }
+          $('lobbyStatus').textContent = T('연결됐어요. 방장을 기다리는 중', 'Connected. Waiting for the host'); link.send({ t: 'hello', name: myName(), id: netId });
+        }
+        else if (s === 'closed') beginRejoin(code);
+        else if (s === 'error') { if (S.rejoin) retryRejoin(code); else leaveToTitle(JOIN_ERR[d] || T(`연결 문제: ${d}`, `Connection problem: ${d}`)); }
       },
       data: (m) => {
         if (m.t === 'lobby') { S.roster = m.roster; if (m.you) S.mySlot = m.you; renderLobby(); }
@@ -387,7 +431,29 @@ async function startJoin() {
         else if (m.t === 'title') leaveToTitle(T('방장이 게임을 끝냈어요.', 'The host ended the game.'));
       },
     });
-  } catch (e) { leaveToTitle(e.message); }
+    if (S.mode !== 'client') { link.close(); return; }
+    S.link?.close(); S.link = link;
+  } catch (e) { if (S.rejoin) retryRejoin(code); else leaveToTitle(e.message); }
+}
+// 방장과 끊겼을 때: 화면은 그대로 두고 1분 동안 같은 코드로 다시 들어가 본다
+function beginRejoin(code) {
+  if (S.mode !== 'client') return;
+  S.link?.close(); S.link = null;
+  clearTimeout(S.rejoin?.giveUp);
+  S.rejoin = { until: performance.now() + REJOIN_MS, giveUp: setTimeout(() => { if (S.rejoin) leaveToTitle(T('방장과 연결이 끊겼어요. 방 코드로 다시 들어가 주세요.', 'Lost the connection to the host. Join again with the room code.')); }, REJOIN_MS + 5000) };
+  netNotice(T('📶 방장과 연결이 끊겼어요. 다시 연결하는 중…', '📶 Lost the connection to the host. Reconnecting…'));
+  connectClient(code);
+}
+function retryRejoin(code) {
+  if (!S.rejoin || S.mode !== 'client') return;
+  S.link?.close(); S.link = null;
+  if (performance.now() > S.rejoin.until) { leaveToTitle(T('방장과 연결이 끊겼어요. 방 코드로 다시 들어가 주세요.', 'Lost the connection to the host. Join again with the room code.')); return; }
+  setTimeout(() => { if (S.rejoin && S.mode === 'client' && !S.link) connectClient(code); }, 2500);
+}
+function netNotice(msg) {
+  let b = $('netNotice');
+  if (!b) { b = document.createElement('div'); b.id = 'netNotice'; $('app').appendChild(b); }
+  b.textContent = msg; b.hidden = !msg;
 }
 
 // 이어 하기: 혼자 하기·방장 기기에 학년별로 어디까지 했는지 저장한다(사흘 동안)
@@ -411,7 +477,8 @@ const HOST_HINT = () => T('친구에게 이 코드를 알려 주세요. 최대 4
 function newRun() {
   // 이번 판의 문제: 학년 교과 + 할로윈 상식을 섞어 층마다 쪽지 수만큼, 상자·가구 문제는 층마다 묶음으로.
   // 기본 문제 은행이면 학년 산수 문제(그때그때 만듦)를 섞어 한 시간 동안 덜 겹치게 한다
-  S.run = pickQuestions(S.bank, S.grade, { notes: STAGES.map(s => s.notes || 1), chest: CHEST_N });
+  S.run = pickQuestions(S.bank, S.grade, { notes: STAGES.map(s => s.notes || 1) });
+  S.run.id = Math.random().toString(36).slice(2, 10);
   S.diff = diffForGrade(S.grade, S.diffSetting);
   S.totals = { time: 0, caught: 0, stolen: 0, wrong: 0, items: 0, candy: 0, stars: 0 };
 }
@@ -426,18 +493,26 @@ function startSolo(resume = null) {
 // round: 몇 번째 쪽지부터(다시 도전하면 실패한 쪽지부터 이어서)
 function launchStage(idx, round = 0) {
   if (!S.run) newRun();
-  const set = S.run.sets[idx];
-  const msg = { t: 'start', st: idx, puzzles: S.run.floors[idx], round, chestQuiz: set.slice(0, CHEST_N), searchQuiz: set.slice(CHEST_N), grade: S.grade,
-    roster: S.roster.filter(r => !r.pending).map(({ slot, name, char }) => ({ slot, name, char })), diff: S.diff, seed: (Math.random() * 1e9) | 0 };
+  // 상자·가구 문제는 문제 묶음 전체를 보내고 기기마다 섞어 꺼낸다(같은 판이면 층이 바뀌어도 이어서 꺼냄)
+  const msg = { t: 'start', st: idx, puzzles: S.run.floors[idx], round, quiz: { id: S.run.id, pool: S.run.pool, math: S.run.math, grade: S.run.grade }, grade: S.grade,
+    roster: S.roster.filter(r => !r.pending && !r.off).map(({ slot, name, char }) => ({ slot, name, char })), diff: S.diff, seed: (Math.random() * 1e9) | 0 };
   S.lastStart = msg; S.seen = new Set();
   S.link?.broadcast(msg);
   beginStage(msg);
-  S.sim = new Sim({ stageIdx: idx, puzzles: msg.puzzles, round, chestQuiz: msg.chestQuiz, roster: msg.roster, diff: msg.diff, seed: msg.seed });
+  S.sim = new Sim({ stageIdx: idx, puzzles: msg.puzzles, round, roster: msg.roster, diff: msg.diff, seed: msg.seed });
   S.snapT = 0;
+}
+
+// 층을 다시 할 때 그 층 쪽지 문제를 여분 문제로 바꾼다(여분이 없으면 그대로)
+function freshNote(idx) {
+  const sp = S.run?.spares; if (!sp?.length) return;
+  const f = S.run.floors[idx]; f[S.round] = sp.shift();
 }
 
 function leaveToTitle(err = '') {
   if (S.mode === 'host') S.link?.broadcast({ t: 'title' });
+  for (const r of S.roster || []) clearTimeout(r.dropT);
+  clearTimeout(S.rejoin?.giveUp); S.rejoin = null; netNotice(''); keepAwake(false);
   S.link?.close(); S.link = null; S.mode = 'none'; S.sim = null; S.inGame = false; S.run = null; S.lastStart = null; S.resume = null; closeQuiz(); closeComic();
   closeModal(); toggleNote(false);
   ['hud', 'bottom', 'compass', 'banner', 'hideview', 'stick', 'throwBtn'].forEach(id => $(id).hidden = true);
@@ -446,11 +521,24 @@ function leaveToTitle(err = '') {
   buildStageScene(0, null); S.monsters.forEach(m => m.grp.visible = true);
 }
 
+// 게임하는 동안 화면이 꺼지지 않게(꺼지면 연결이 끊긴다). 다른 앱에 갔다 오면 다시 건다
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (!on) { await wakeLock?.release(); wakeLock = null; return; }
+    if (!wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.inGame) keepAwake(true); });
+
 /* ---------- 판 시작 ---------- */
 function beginStage(msg) {
   closeComic(); if ($('codeBadge')) $('codeBadge').hidden = true;
-  S.stageIdx = msg.st; S.puzzles = msg.puzzles || [msg.puzzle]; S.round = msg.round | 0; S.puzzle = S.puzzles[S.round]; S.roster = msg.roster; S.diff = msg.diff; S.playGrade = msg.grade ?? S.grade;
-  S.chestQuiz = msg.chestQuiz || []; S.searchQuiz = msg.searchQuiz || []; S.searchQi = 0; S.chestOpen = []; S.candyN = 0; S.me.candy = 0; S.flights = []; S.lureFx = new Map(); closeQuiz();
+  S.stageIdx = msg.st; S.puzzles = msg.puzzles || [msg.puzzle]; S.round = msg.round | 0; S.puzzle = S.puzzles[S.round]; S.diff = msg.diff; S.playGrade = msg.grade ?? S.grade;
+  // 친구 기기만 명단을 받아 쓴다(방장 명단에는 들어오는 중·끊긴 친구와 이름표가 들어 있어서 덮어쓰면 안 된다)
+  if (S.mode === 'client') S.roster = msg.roster;
+  if (msg.quiz && S.deckId !== msg.quiz.id) { S.deck = makeDeck(msg.quiz.pool, msg.quiz.grade, { math: msg.quiz.math }); S.deckId = msg.quiz.id; }
+  S.chestOpen = []; S.candyN = 0; S.me.candy = 0; S.flights = []; S.lureFx = new Map(); closeQuiz();
   S.phase = 'play'; S.shownPhase = 'play'; S.paused = false;
   S.pz = { have: [], asm: false, open: false, wrong: 0 };
   S.note = { tray: shuffle([0, 1, 2, 3]), slots: [null, null, null, null], picked: null };
@@ -459,7 +547,7 @@ function beginStage(msg) {
   buildStageScene(msg.st, msg.roster);
   const me = msg.roster.find(r => r.slot === S.mySlot);
   if (!me && S.mode === 'client') { $('lobbyStatus').textContent = T('게임이 진행 중이에요. 다음 층부터 함께해요!', 'A game is in progress. You will join from the next floor!'); return; }
-  S.inGame = true;
+  S.inGame = true; keepAwake(true);
   showScreen(null); closeModal();
   if (S.mode !== 'client') saveProgress(msg.st, S.round);
   ['hud', 'bottom'].forEach(id => $(id).hidden = false);
@@ -1007,7 +1095,7 @@ function updateHUD() {
   $('throwN').textContent = S.me.candy; tb.classList.toggle('empty', S.me.candy <= 0 || !!(S.me.flags & 3));
   const teamHTML = [...S.players.values()].map(p => {
     const ch = CHARACTERS[p.char % CHARACTERS.length];
-    const st = p.flags & 4 ? '✨' : p.flags & 2 ? '🔒' : p.flags & 1 ? '🫥' : '🏃';
+    const st = p.flags & 64 ? '📶' : p.flags & 4 ? '✨' : p.flags & 2 ? '🔒' : p.flags & 1 ? '🫥' : '🏃';
     return `<div class="mate ${p.slot === S.mySlot ? 'me' : ''} ${p.flags & 2 ? 'caged' : ''}"><i style="background:${ch.color}"></i>${esc(p.name)}<span class="st">${st}</span></div>`;
   }).join('');
   if (teamHTML !== S.teamHTML) { S.teamHTML = teamHTML; $('team').innerHTML = teamHTML; }
@@ -1207,14 +1295,14 @@ function noteKey(e) {
 /* ---------- 호박 상자·가구 문제 ---------- */
 let quizAt = null;   // { kind: 'chest'|'search', id, x, z, answered }
 function openQuiz(id) {
-  const quiz = S.chestQuiz[id % Math.max(1, S.chestQuiz.length)]; if (!quiz) return;
+  const quiz = S.deck?.next(); if (!quiz) return;
   const c = S.world.chests[id];
   showQuiz({ kind: 'chest', id, x: c.c, z: c.r }, quiz, T('🎃 호박 상자', '🎃 Pumpkin Box'), T('맞히면 아이템!', 'Get it right for an item!'), S.chestSeen++ < 2 ? T('문제를 맞히면 상자가 열려요. 기회는 한 번! (괴물은 계속 움직여요)', 'Answer correctly to open the box. One try only! (Monsters keep moving)') : T('기회는 한 번!', 'One try only!'),
     ok => sendInput({ t: 'chest', id, ok }));
 }
-// 가구 문제: 이 층의 가구 문제 묶음에서 차례로 꺼낸다(틀린 뒤 다시 오면 다음 문제)
+// 가구 문제: 문제 묶음에서 겹치지 않게 하나씩 꺼낸다(틀린 뒤 다시 오면 다른 문제)
 function openSearchQuiz(id) {
-  const a = S.searchList[id], quiz = S.searchQuiz[S.searchQi++ % Math.max(1, S.searchQuiz.length)]; if (!quiz) return;
+  const a = S.searchList[id], quiz = S.deck?.next(); if (!quiz) return;
   const [ic, nm] = SEARCHABLE[SEARCH_CODES[a[3]]] || ['🔍', T('가구', 'furniture')];
   Sound.play('paper', 0.6); sendInput({ t: 'peek', id, rd: S.round });
   showQuiz({ kind: 'search', id, x: a[0], z: a[1] }, quiz, T(`${ic} ${nm} 뒤지기`, `${ic} Search the ${nm}`), T('맞히면 뒤질 수 있어요', 'Answer to search it'),
@@ -1287,7 +1375,7 @@ async function showClear(res) {
 // 방장 화면: 층 사이 만화를 다 본 친구 수(다 보기 전에 시작하면 그 친구의 만화는 닫힌다)
 function updateSeen() {
   const el = $('cWait'); if (!el || S.mode !== 'host') return;
-  const friends = S.roster.filter(r => r.slot !== S.mySlot && !r.pending), n = friends.filter(r => S.seen?.has(r.slot)).length;
+  const friends = S.roster.filter(r => r.slot !== S.mySlot && !r.pending && !r.off), n = friends.filter(r => S.seen?.has(r.slot)).length;
   if (!friends.length) { el.textContent = ''; return; }
   el.textContent = n >= friends.length ? T('✅ 친구들이 모두 만화를 다 봤어요!', '✅ All your friends finished the comic!') : T(`📖 친구 ${friends.length}명 중 ${n}명이 만화를 다 봤어요. 지금 시작하면 아직 보는 친구의 만화는 닫혀요.`, `📖 ${n} of ${friends.length} friends finished the comic. If you start now, the comic closes for friends still reading.`);
 }
@@ -1301,7 +1389,7 @@ function showOver(why) {
   openModal(`<h2>${title}</h2><p class="story">${lead}</p>
     <p class="lead">${T('도움말: 위의 쪽지 감지기를 누르면 루미가 쪽지가 있는 방을 알려 줘요. 괴물이 쫓아오면 사탕을 던지거나 옷장에 숨어요.', 'Tip: press the note detector at the top and Lumi tells you which room a piece is in. If a monster chases you, throw candy or hide in a wardrobe.')}</p>
     <div class="row">${isHost ? `<button class="btn-ink ghost" id="oTitle">${T('처음 화면', 'Title screen')}</button><button class="btn-ink" id="oRetry" autofocus>${T('다시 도전', 'Try again')}</button>` : `<p class="lead">${T('방장이 다시 시작하기를 기다려요…', 'Waiting for the host to restart…')}</p>`}</div>`);
-  if (isHost) { $('oRetry').onclick = () => { closeModal(); launchStage(S.stageIdx, S.round); }; $('oTitle').onclick = () => leaveToTitle(); }
+  if (isHost) { $('oRetry').onclick = () => { closeModal(); freshNote(S.stageIdx); launchStage(S.stageIdx, S.round); }; $('oTitle').onclick = () => leaveToTitle(); }
 }
 function showEnding() {
   const T = S.totals;

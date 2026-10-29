@@ -258,7 +258,6 @@ export const monsterSpots = (spots, diff) => spots.mon.filter(s => !(diff === 'e
 // 쪽지 찾기: 층마다 쪽지 한 장(4조각)을 모아 이어 붙이면 문제가 되고, 풀면 탈출문이 열린다. 가구 10곳 중 4곳에 조각을 넣는다(나머지는 꽝, 작은 보상)
 export const SEARCH_SPOTS = 10;
 export const SEARCH_LOCK = 6;    // 가구 문제를 틀리면 그 가구가 잠기는 시간(초). 다시 오면 다른 문제가 나온다
-export const CHEST_N = 5;         // 층마다 호박 상자 문제 수(나머지 묶음은 가구 문제)
 export const SEARCHABLE = {
   B: ['📚', T('책장', 'bookshelf')], Q: ['🍽️', T('식탁', 'dining table')], T: ['🧰', T('작업대', 'workbench')], b: ['🛢️', T('나무통', 'barrel')], R: ['👑', T('왕좌', 'throne')], o: ['🦉', T('부엉이상', 'owl statue')], h: ['🪑', T('의자', 'chair')],
   g: ['🪦', T('묘비', 'gravestone')], t: ['🌳', T('나무', 'tree')], s: ['🎃', T('허수아비', 'scarecrow')], w: ['🪣', T('우물', 'well')],
