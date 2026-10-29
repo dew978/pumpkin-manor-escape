@@ -12,7 +12,7 @@ import { playComic, closeComic, comicOpen } from './comic.js';
 import { say, fragLines, lumiLine, clearDialog, dialogOpen, STAGE_INTRO, AFTER_COMIC } from './dialog.js';
 import { buildWorld, fadeUniform, labelSprite } from './world.js';
 import { Sim, ITEM_CODES, THROW_RANGE, LURE_R } from './sim.js';
-import { hostRoom, joinRoom, MAX_PLAYERS } from './net.js';
+import { hostRoom, joinRoom, MAX_PLAYERS, NET_V } from './net.js';
 import { parseMap, slideMove, tileOf } from './grid.js';
 import { Sound } from './audio.js';
 import { josa, store, esc, fmtTime, T, LANG, setLang } from './util.js';
@@ -342,6 +342,13 @@ async function startHost() {
       },
       data: (m, slot) => {
         if (m.t === 'hello') {
+          // 새로고침 안 한 기기(예전 판): 'wait' 안내는 예전 판도 화면에 보여 준다. 명단에서 빼고 더는 보내지 않는다
+          if (m.v !== NET_V) {
+            S.link.send(slot, { t: 'wait', msg: T('게임이 새 버전으로 바뀌었어요. 화면을 새로고침(⟳)한 뒤 방 코드로 다시 들어와 주세요.', 'The game was updated. Please refresh this page (⟳) and join again with the room code.') });
+            S.link.mute(slot); S.roster = S.roster.filter(q => q.slot !== slot); broadcastLobby();
+            toast(T('새로고침이 필요한 친구가 있어요. 그 기기에서 화면을 새로고침해 주세요.', 'A friend needs to refresh their page before joining.'));
+            return;
+          }
           const id = String(m.id || '').slice(0, 24);
           let r = S.roster.find(q => q.slot === slot);
           const prev = id && S.roster.find(q => q.id === id && q !== r);
@@ -387,7 +394,7 @@ function showCodeBadge(code) {
 function broadcastLobby() {
   renderLobby();
   // 친구마다 자기 자리 번호(you)를 알려 준다
-  if (S.link) for (const slot of S.link.conns.keys()) S.link.send(slot, { t: 'lobby', roster: S.roster, stage: S.startStage, you: slot });
+  if (S.link) for (const slot of S.link.conns.keys()) S.link.send(slot, { t: 'lobby', roster: S.roster, stage: S.startStage, you: slot, v: NET_V });
 }
 
 // 이 탭의 이름표: 끊겼다 다시 들어오면 방장이 원래 자리로 돌려준다(새로고침해도 같은 탭이면 그대로)
@@ -417,13 +424,13 @@ async function connectClient(code) {
         if (S.link !== link) return;
         if (s === 'connected') {
           if (S.rejoin) { clearTimeout(S.rejoin.giveUp); S.rejoin = null; netNotice(''); toast(T('📶 다시 연결됐어요!', '📶 Reconnected!')); }
-          $('lobbyStatus').textContent = T('연결됐어요. 방장을 기다리는 중', 'Connected. Waiting for the host'); link.send({ t: 'hello', name: myName(), id: netId });
+          $('lobbyStatus').textContent = T('연결됐어요. 방장을 기다리는 중', 'Connected. Waiting for the host'); link.send({ t: 'hello', name: myName(), id: netId, v: NET_V });
         }
         else if (s === 'closed') beginRejoin(code);
         else if (s === 'error') { if (S.rejoin) retryRejoin(code); else leaveToTitle(JOIN_ERR[d] || T(`연결 문제: ${d}`, `Connection problem: ${d}`)); }
       },
       data: (m) => {
-        if (m.t === 'lobby') { S.roster = m.roster; if (m.you) S.mySlot = m.you; renderLobby(); }
+        if (m.t === 'lobby') { S.roster = m.roster; if (m.you) S.mySlot = m.you; renderLobby(); if (m.v !== NET_V) $('lobbyStatus').textContent = T('방장 기기가 예전 판이에요. 방장 화면을 새로고침(⟳)하고 방을 다시 만들어 주세요.', 'The host is on an older version. The host should refresh (⟳) and create the room again.'); }
         else if (m.t === 'start') beginStage(m);
         else if (m.t === 's') applySnap(m);
         else if (m.t === 'full') leaveToTitle(T('방이 꽉 찼어요(최대 4명).', 'The room is full (max 4 players).'));

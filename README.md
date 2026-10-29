@@ -27,6 +27,8 @@ Teachers: **Settings → Teacher: edit questions** replaces the questions with y
 
 **Questions don't repeat:** box and furniture questions come from a shuffled deck on each device, with no repeats during a whole game (retrying a floor keeps drawing new ones), mixed with math questions generated with fresh numbers each time. Retrying a floor also swaps its note question.
 
+**After an update:** every device must refresh the page to play together. A device that has not refreshed is told to refresh and rejoin.
+
 **Co-op connection:** if a friend's connection drops, their screen stays in the game and reconnects to the same seat for up to a minute while the host holds the seat (📶). Note: PeerJS's public relay (TURN) server is currently not responding, so co-op needs devices that can reach each other directly; some school Wi-Fi networks block this.
 
 ## Tech

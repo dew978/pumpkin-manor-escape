@@ -11,6 +11,36 @@ export const MAX_PLAYERS = 4;
 // 중개 서버(방 찾기)와의 연결 문제: 이미 이어진 게임 연결과는 상관없다
 const SIGNAL_ERR = new Set(['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected']);
 const TRIES = 3, TRY_MS = 9000;
+// 연결 판: 주고받는 메시지 모양이 바뀌면 올린다. 판이 다른 기기(새로고침 안 한 기기)는 방장이 안내하고 게임에 넣지 않는다
+export const NET_V = 2;
+
+// PeerJS JSON 채널은 16,300바이트가 넘는 메시지를 보내지 않고 버린다(오류만 남김). 층 시작 메시지에 문제 묶음이 들어가면서
+// 3학년 이상은 이 한도를 넘어 친구들이 시작을 못 받았다(2026-10-30). 긴 메시지는 글자 3000개씩(한글이어도 9KB쯤) 나눠 보내고 받는 쪽에서 붙인다
+const PIECE = 3000;
+let pieceId = 0;
+function pieces(m) {
+  const s = JSON.stringify(m);
+  if (s.length <= PIECE) return [m];
+  const id = ++pieceId, out = [];
+  for (let at = 0; at < s.length;) {
+    let end = Math.min(s.length, at + PIECE);
+    // 이모지(서로게이트 쌍)를 가운데서 자르지 않는다
+    if (end < s.length && /[\uDC00-\uDFFF]/.test(s[end])) end--;
+    out.push(s.slice(at, end)); at = end;
+  }
+  return out.map((part, i) => ({ t: 'pc', id, i, n: out.length, s: part }));
+}
+function sendTo(conn, list) { for (const m of list) conn.send(m); }
+// 받은 조각을 모아 다 모이면 원래 메시지로 넘긴다(연결마다 하나)
+function joiner(deliver) {
+  const got = new Map();
+  return (m) => {
+    if (!m || m.t !== 'pc') { deliver(m); return; }
+    let p = got.get(m.id); if (!p) got.set(m.id, p = { n: m.n, have: 0, parts: [] });
+    if (p.parts[m.i] == null) { p.parts[m.i] = m.s; p.have++; }
+    if (p.have === p.n) { got.delete(m.id); try { deliver(JSON.parse(p.parts.join(''))); } catch (e) { console.warn('조각 메시지를 붙이지 못했어요', e); } }
+  };
+}
 
 let loading = null;
 function loadPeer() {
@@ -48,8 +78,10 @@ export async function hostRoom(cb) {
   const peer = new window.Peer(PREFIX + code);
   const link = {
     host: true, code, conns,
-    send(slot, m) { const c = conns.get(slot); if (c && c.open) c.send(m); },
-    broadcast(m, except = -1) { for (const [s, c] of conns) if (s !== except && c.open) c.send(m); },
+    send(slot, m) { const c = conns.get(slot); if (c && c.open && !c.muted) sendTo(c, pieces(m)); },
+    broadcast(m, except = -1) { let list = null; for (const [s, c] of conns) if (s !== except && c.open && !c.muted) sendTo(c, list ??= pieces(m)); },
+    // 판이 다른 친구: 연결은 두고(안내 글이 남게) 더는 아무것도 보내지 않는다
+    mute(slot) { const c = conns.get(slot); if (c) c.muted = true; },
     kick(slot) { const c = conns.get(slot); if (c) c.close(); },
     // 알리고 끊기(꽉 참 등)
     drop(slot, m) { const c = conns.get(slot); if (!c) return; conns.delete(slot); c.slot = -1; if (c.open) c.send(m); setTimeout(() => c.close(), 400); },
@@ -75,7 +107,8 @@ export async function hostRoom(cb) {
       const slot = [1, 2, 3, 4, 5, 6, 7].find((s) => !conns.has(s) && !cb.held?.(s));
       if (!slot) { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 400); return; }
       conn.slot = slot; conns.set(slot, conn);
-      conn.on('data', (m) => { if (!dead && conns.get(conn.slot) === conn) cb.data(m, conn.slot); });
+      conn.on('data', joiner((m) => { if (!dead && conns.get(conn.slot) === conn) cb.data(m, conn.slot); }));
+      conn.on('error', (e) => console.warn('연결 오류', conn.slot, e?.type || e));
       conn.on('close', () => { const s = conn.slot; if (conns.get(s) === conn) { conns.delete(s); if (!dead) cb.leave(s); } });
       cb.join(slot);
     });
@@ -90,7 +123,7 @@ export async function joinRoom(code, cb) {
   const peer = new window.Peer();
   const link = {
     host: false, code, conn: null,
-    send(m) { if (this.conn && this.conn.open) this.conn.send(m); },
+    send(m) { if (this.conn && this.conn.open) sendTo(this.conn, pieces(m)); },
     close() { dead = true; clearTimeout(timer); clearTimeout(openTimer); try { peer.destroy(); } catch (e) { /* 이미 닫힘 */ } },
   };
   const fail = (why) => { if (dead) return; link.close(); cb.status('error', why); };
@@ -104,7 +137,7 @@ export async function joinRoom(code, cb) {
     const retry = () => { if (dead || opened || link.conn !== conn) return; clearTimeout(timer); if (tries < TRIES) attempt(); else fail('unreachable'); };
     clearTimeout(timer); timer = setTimeout(retry, TRY_MS);
     conn.on('open', () => { if (dead || link.conn !== conn) return; opened = true; clearTimeout(timer); cb.status('connected'); });
-    conn.on('data', (m) => { if (!dead && link.conn === conn) cb.data(m, 0); });
+    conn.on('data', joiner((m) => { if (!dead && link.conn === conn) cb.data(m, 0); }));
     conn.on('close', () => { if (dead || link.conn !== conn) return; if (opened) cb.status('closed'); else retry(); });
     conn.on('error', () => { if (!opened) retry(); });
   };
