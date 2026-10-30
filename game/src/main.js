@@ -344,18 +344,9 @@ async function startHost() {
       // 친구에게는 아직 아무도 고르지 않은 분장을 준다
       join: (slot) => { const used = new Set(S.roster.map(r => r.char)); const char = [0, 1, 2, 3].find(c => !used.has(c)) ?? slot; S.roster.push({ slot, name: T(`친구${slot}`, `Friend ${slot}`), char, pending: true }); broadcastLobby(); },
       held: (slot) => S.roster.some(r => r.slot === slot && r.off),
-      leave: (slot) => {
-        const p = S.roster.find(r => r.slot === slot);
-        // 게임 중에 끊기면 1분 동안 자리를 남겨 둔다(다시 들어오면 그 자리에서 이어서)
-        if (S.inGame && p && !p.pending) {
-          p.off = true; S.sim?.setOffline(slot, true); clearTimeout(p.dropT);
-          p.dropT = setTimeout(() => dropMember(slot), REJOIN_MS);
-          toast(T(`📶 ${josa(p.name, '이가')} 연결이 끊겼어요. 1분 동안 다시 들어오기를 기다려요`, `📶 ${p.name} lost the connection. Waiting 1 minute for them to come back`));
-          return;
-        }
-        dropMember(slot);
-      },
+      leave: (slot) => markOff(slot),
       data: (m, slot) => {
+        const from = S.roster.find(q => q.slot === slot); if (from) from.seen = performance.now();   // 마지막으로 소식이 온 때(소리 없이 끊김 점검)
         if (m.t === 'hello') {
           // 새로고침 안 한 기기(예전 판): 'wait' 안내는 예전 판도 화면에 보여 준다. 명단에서 빼고 더는 보내지 않는다
           if (m.v !== NET_V) {
@@ -364,18 +355,24 @@ async function startHost() {
             toast(T('새로고침이 필요한 친구가 있어요. 그 기기에서 화면을 새로고침해 주세요.', 'A friend needs to refresh their page before joining.'));
             return;
           }
-          const id = String(m.id || '').slice(0, 24);
+          const id = String(m.id || '').slice(0, 24), name = String(m.name || '').trim().slice(0, 10);
           let r = S.roster.find(q => q.slot === slot);
-          const prev = id && S.roster.find(q => q.id === id && q !== r);
+          // 다시 들어온 친구 찾기. 같은 탭이면 이름표(id)로, 새 탭·새로 켠 브라우저면 끊긴 자리 중 이름이 같은 친구로,
+          // 그래도 없는데 방이 꽉 찼으면 끊긴 자리 아무거나(다른 기기·다른 이름으로 다시 들어온 친구가 막히지 않게)
+          const others = S.roster.filter(q => q !== r && q.slot !== S.mySlot && !q.pending);
+          const busy = others.filter(q => !q.off).length + 1;   // 방장 포함, 지금 들어오는 친구 빼고
+          const prev = (id && others.find(q => q.id === id)) || others.find(q => q.off && q.name === name)
+            || (busy >= MAX_PLAYERS ? others.find(q => q.off) : null);
           if (prev) {
             // 다시 들어온 친구: 새 연결을 원래 자리로 옮긴다(남아 있던 옛 연결은 닫힘)
             S.roster = S.roster.filter(q => q !== r); S.link.move(slot, prev.slot); slot = prev.slot; r = prev;
             clearTimeout(r.dropT); r.off = false; S.sim?.setOffline(slot, false);
+            const sp = S.sim?.players.get(slot); if (sp && name) sp.name = name;   // 끊긴 자리를 다른 이름으로 이어받은 경우
             if (S.inGame) toast(T(`📶 ${josa(r.name, '이가')} 다시 들어왔어요`, `📶 ${r.name} is back`));
-          } else if (S.roster.filter(q => !q.pending).length >= MAX_PLAYERS) {
+          } else if (busy >= MAX_PLAYERS) {
             S.roster = S.roster.filter(q => q !== r); S.link.drop(slot, { t: 'full' }); broadcastLobby(); return;
           }
-          if (r) { r.name = String(m.name || '').slice(0, 10) || T(`친구${slot}`, `Friend ${slot}`); r.pending = false; r.id = id; }
+          if (r) { r.name = name || r.name || T(`친구${slot}`, `Friend ${slot}`); r.pending = false; r.id = id; r.seen = performance.now(); }
           broadcastLobby();
           if (S.inGame && S.sim && S.lastStart && S.sim.phase === 'play' && r) {
             // 층이 진행 중이면 지금 쪽지부터 바로 함께한다(시작 자리에서)
@@ -384,6 +381,7 @@ async function startHost() {
             S.link.send(slot, { ...S.lastStart, round: S.sim.round, roster, late: true });
           } else if (S.inGame) S.link.send(slot, { t: 'wait', msg: T('층이 끝나는 중이에요. 다음 층부터 함께해요!', 'This floor is ending. You will join from the next floor!') });
         } else if (m.t === 'seen') { S.seen.add(slot); updateSeen(); }
+        else if (m.t === 'ping') { /* 살아 있음 */ }
         else if (m.t === 'pos') S.sim?.setPlayer(slot, +m.x, +m.z, +m.f, !!m.mv);
         else S.sim?.input(slot, m);
       },
@@ -391,6 +389,28 @@ async function startHost() {
   } catch (e) { $('lobbyStatus').textContent = e.message; }
 }
 const REJOIN_MS = 60000;
+// 친구가 끊겼을 때: 게임 중이면 1분 동안 자리를 남겨 둔다(다시 들어오면 그 자리에서 이어서). 대기실이면 바로 뺀다
+function markOff(slot) {
+  const p = S.roster.find(r => r.slot === slot); if (!p) return;
+  if (!(S.inGame && !p.pending)) { dropMember(slot); return; }
+  if (p.off) return;
+  p.off = true; S.sim?.setOffline(slot, true); clearTimeout(p.dropT);
+  p.dropT = setTimeout(() => dropMember(slot), REJOIN_MS);
+  toast(T(`📶 ${josa(p.name, '이가')} 연결이 끊겼어요. 1분 동안 다시 들어오기를 기다려요`, `📶 ${p.name} lost the connection. Waiting 1 minute for them to come back`));
+}
+// 소리 없이 끊긴 친구 찾기: 태블릿이 잠기거나 앱을 바꾸거나 브라우저를 닫으면 연결 닫힘 신호가 한참 늦거나 오지 않는다.
+// 그동안 그 친구는 '아직 접속 중'으로 남아서, 다시 들어오면 꽉 찼다고 막히고 층도 끝나지 않았다(2026-10-30 교실).
+// 친구 기기는 2초마다 ping(게임 중에는 위치도 1초에 15번)을 보내므로, 대기실·게임·층 사이 어디서든 8초 넘게 아무것도 안 오면
+// 끊긴 것으로 보고(게임 중이면 자리를 남긴 채) 연결을 닫는다
+const STALE_MS = 8000;
+setInterval(() => {
+  if (S.mode !== 'host' || !S.link) return;
+  const now = performance.now();
+  for (const r of S.roster) {
+    if (r.slot === S.mySlot || r.pending || r.off || now - (r.seen ?? now) < STALE_MS) continue;
+    markOff(r.slot); S.link.kick(r.slot);   // 친구 기기가 살아 있으면 닫힘을 받고 스스로 다시 들어온다
+  }
+}, 1000);
 // 친구를 명단·게임에서 뺀다(나갔거나, 끊긴 뒤 1분 안에 돌아오지 않음)
 function dropMember(slot) {
   const p = S.roster.find(r => r.slot === slot); if (!p) return;
@@ -472,6 +492,8 @@ function retryRejoin(code) {
   if (performance.now() > S.rejoin.until) { leaveToTitle(T('방장과 연결이 끊겼어요. 방 코드로 다시 들어가 주세요.', 'Lost the connection to the host. Join again with the room code.')); return; }
   setTimeout(() => { if (S.rejoin && S.mode === 'client' && !S.link) connectClient(code); }, 2500);
 }
+// 친구 기기: 방장에게 2초마다 살아 있다고 알린다(태블릿이 잠기거나 브라우저를 닫으면 멈춰서 방장이 끊김을 알아챈다)
+setInterval(() => { if (S.mode === 'client' && S.link) S.link.send({ t: 'ping' }); }, 2000);
 function netNotice(msg) {
   let b = $('netNotice');
   if (!b) { b = document.createElement('div'); b.id = 'netNotice'; $('app').appendChild(b); }
@@ -519,6 +541,7 @@ function launchStage(idx, round = 0) {
   const msg = { t: 'start', st: idx, puzzles: S.run.floors[idx], round, quiz: { id: S.run.id, pool: S.run.pool, math: S.run.math, grade: S.run.grade }, grade: S.grade,
     roster: S.roster.filter(r => !r.pending && !r.off).map(({ slot, name, char }) => ({ slot, name, char })), diff: S.diff, seed: (Math.random() * 1e9) | 0, rules: { ...S.items } };
   S.lastStart = msg; S.seen = new Set();
+  for (const r of S.roster) r.seen = performance.now() + 6000;   // 장면을 만드는 동안(느린 태블릿) 끊김으로 보지 않게
   S.link?.broadcast(msg);
   beginStage(msg);
   S.sim = new Sim({ stageIdx: idx, puzzles: msg.puzzles, round, roster: msg.roster, diff: msg.diff, seed: msg.seed, rules: msg.rules });
@@ -706,6 +729,8 @@ function applySnap(s) {
   for (const a of s.p) {
     const [slot, x, z, face, flags, item, name, char, tpSeq, tpX, tpZ, hid, candy] = a;
     seen.add(slot);
+    // 끊긴 자리를 다른 친구가 이어받으면 이름이 바뀐다: 이름표를 새로 단다
+    if (S.players.has(slot) && S.players.get(slot).name !== name) removePlayerActor(slot);
     if (!S.players.has(slot)) addPlayerActor({ slot, name, char });
     const p = S.players.get(slot); p.flags = flags; p.item = item; p.hid = hid;
     if (slot === S.mySlot) {

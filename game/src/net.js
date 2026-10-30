@@ -12,7 +12,7 @@ export const MAX_PLAYERS = 4;
 const SIGNAL_ERR = new Set(['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected']);
 const TRIES = 3, TRY_MS = 9000;
 // 연결 판: 주고받는 메시지 모양이 바뀌면 올린다. 판이 다른 기기(새로고침 안 한 기기)는 방장이 안내하고 게임에 넣지 않는다
-export const NET_V = 2;
+export const NET_V = 3;   // 3: 친구 기기가 2초마다 ping을 보낸다(소리 없이 끊긴 기기 찾기)
 
 // PeerJS JSON 채널은 16,300바이트가 넘는 메시지를 보내지 않고 버린다(오류만 남김). 층 시작 메시지에 문제 묶음이 들어가면서
 // 3학년 이상은 이 한도를 넘어 친구들이 시작을 못 받았다(2026-10-30). 긴 메시지는 글자 3000개씩(한글이어도 9KB쯤) 나눠 보내고 받는 쪽에서 붙인다
