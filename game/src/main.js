@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { STAGES, MONSTERS, CHARACTERS, EDGE_COLORS, PLAYER_SPEED, diffForGrade, monsterSpots, SEARCHABLE, SEARCH_CODES, roomName } from './config.js';
+import { ITEM_RULES, allItems, stageMap, STAGES, MONSTERS, CHARACTERS, EDGE_COLORS, PLAYER_SPEED, diffForGrade, monsterSpots, SEARCHABLE, SEARCH_CODES, roomName } from './config.js';
 import { loadBank, defaultBank, validateBank, pickQuestions, makeDeck, BANK_KEY } from './questions.js';
 import { loadModels, spawnModel, modelSize, glowTexture } from './assets.js';
 import { loadKids, makeKid, playKid, hasKid } from './chars.js';
@@ -163,7 +163,22 @@ addEventListener('blur', () => { keys.clear(); if (S.mode === 'solo' && S.inGame
 const AIM_DEAD = 0.28;
 const aim = { id: null, cx: 0, cy: 0, dx: 0, dy: 0, mag: 0 };
 const mouse = { x: 0, y: 0, on: false };
-const canThrow = () => S.inGame && S.phase === 'play' && !S.paused && !(S.me.flags & 7) && S.me.candy > 0 && $('note').hidden && $('quiz').hidden;
+// 아이템 규칙: 이 기기에 저장(혼자 하기·방장). 친구 기기는 방장이 보낸 규칙(S.rules)을 쓴다
+const loadItems = () => { try { return { ...allItems(), ...JSON.parse(store.get('pumpkin3-items') || '{}') }; } catch (e) { return allItems(); } };
+S.items = loadItems(); S.rules = allItems();
+const itemsOffText = (r) => { const off = ITEM_RULES.filter(([k]) => !r[k]).map(([, t]) => t); return off.length ? `${T('끈 아이템', 'Items off')}: ${off.join(' · ')}` : T('아이템: 모두 켬', 'Items: all on'); };
+// 아이템 켜고 끄기 단추 줄(설정 창·방장 대기실). 누를 때마다 켬↔끔
+function itemRow(id) {
+  return `<div class="seg set items" id="${id}"><span>${T('아이템', 'Items')}</span>${ITEM_RULES.map(([k, t]) => `<button data-v="${k}" aria-pressed="${!!S.items[k]}">${t}</button>`).join('')}</div>`;
+}
+function bindItemRow(el, after) {
+  el.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.items[b.dataset.v] = !S.items[b.dataset.v]; store.set('pumpkin3-items', JSON.stringify(S.items));
+    b.setAttribute('aria-pressed', String(S.items[b.dataset.v])); after?.();
+  };
+}
+const canThrow = () => S.rules.candy && S.inGame && S.phase === 'play' && !S.paused && !(S.me.flags & 7) && S.me.candy > 0 && $('note').hidden && $('quiz').hidden;
 // 벽·가구를 넘어 날아가고, 떨어질 자리가 막혀 있으면 내 쪽으로 가장 가까운 바닥(방장 판정과 같은 계산)
 function landingPoint(tx, tz) {
   const me = S.me, g = S.world.g; let dx = tx - me.x, dz = tz - me.z; const d = Math.hypot(dx, dz) || 1;
@@ -323,7 +338,7 @@ async function startHost() {
   try {
     S.link = await hostRoom({
       status: (s, d) => {
-        if (s === 'ready') { $('lobbyCode').textContent = S.link.code; $('lobbyStatus').textContent = T('친구를 기다리는 중', 'Waiting for friends'); showCodeBadge(S.link.code); }
+        if (s === 'ready') { S.roomCode = S.link.code; $('lobbyCode').textContent = S.link.code; $('lobbyStatus').textContent = T('친구를 기다리는 중', 'Waiting for friends'); showCodeBadge(S.link.code); }
         else if (s === 'error') $('lobbyStatus').textContent = T(`연결 문제: ${d}. 인터넷을 확인하고 다시 만들어 주세요.`, `Connection problem: ${d}. Check the internet and create the room again.`);
       },
       // 친구에게는 아직 아무도 고르지 않은 분장을 준다
@@ -394,7 +409,7 @@ function showCodeBadge(code) {
 function broadcastLobby() {
   renderLobby();
   // 친구마다 자기 자리 번호(you)를 알려 준다
-  if (S.link) for (const slot of S.link.conns.keys()) S.link.send(slot, { t: 'lobby', roster: S.roster, stage: S.startStage, you: slot, v: NET_V });
+  if (S.link) for (const slot of S.link.conns.keys()) S.link.send(slot, { t: 'lobby', roster: S.roster, stage: S.startStage, you: slot, v: NET_V, items: S.items });
 }
 
 // 이 탭의 이름표: 끊겼다 다시 들어오면 방장이 원래 자리로 돌려준다(새로고침해도 같은 탭이면 그대로)
@@ -414,7 +429,7 @@ async function startJoin() {
   S.mode = 'client'; S.roster = []; S.mySlot = -1; S.rejoin = null;
   showScreen('lobby'); $('lobbyCode').textContent = code; $('lobbyRole').textContent = T('들어간 방', 'Joined room');
   $('lobbyHint').textContent = T('방장이 시작하면 함께 들어가요.', 'You will start together when the host starts.'); $('hostCtl').hidden = true; $('lobbyStatus').textContent = T('연결하는 중…', 'Connecting…'); $('members').innerHTML = '';
-  connectClient(code);
+  S.roomCode = code; connectClient(code);
 }
 async function connectClient(code) {
   let link = null;
@@ -430,7 +445,7 @@ async function connectClient(code) {
         else if (s === 'error') { if (S.rejoin) retryRejoin(code); else leaveToTitle(JOIN_ERR[d] || T(`연결 문제: ${d}`, `Connection problem: ${d}`)); }
       },
       data: (m) => {
-        if (m.t === 'lobby') { S.roster = m.roster; if (m.you) S.mySlot = m.you; renderLobby(); if (m.v !== NET_V) $('lobbyStatus').textContent = T('방장 기기가 예전 판이에요. 방장 화면을 새로고침(⟳)하고 방을 다시 만들어 주세요.', 'The host is on an older version. The host should refresh (⟳) and create the room again.'); }
+        if (m.t === 'lobby') { S.roster = m.roster; if (m.you) S.mySlot = m.you; renderLobby(); if (m.items) $('lobbyRules').textContent = `${T('방장 규칙', 'Host rules')} · ${itemsOffText({ ...allItems(), ...m.items })}`; if (m.v !== NET_V) $('lobbyStatus').textContent = T('방장 기기가 예전 판이에요. 방장 화면을 새로고침(⟳)하고 방을 다시 만들어 주세요.', 'The host is on an older version. The host should refresh (⟳) and create the room again.'); }
         else if (m.t === 'start') beginStage(m);
         else if (m.t === 's') applySnap(m);
         else if (m.t === 'full') leaveToTitle(T('방이 꽉 찼어요(최대 4명).', 'The room is full (max 4 players).'));
@@ -502,11 +517,11 @@ function launchStage(idx, round = 0) {
   if (!S.run) newRun();
   // 상자·가구 문제는 문제 묶음 전체를 보내고 기기마다 섞어 꺼낸다(같은 판이면 층이 바뀌어도 이어서 꺼냄)
   const msg = { t: 'start', st: idx, puzzles: S.run.floors[idx], round, quiz: { id: S.run.id, pool: S.run.pool, math: S.run.math, grade: S.run.grade }, grade: S.grade,
-    roster: S.roster.filter(r => !r.pending && !r.off).map(({ slot, name, char }) => ({ slot, name, char })), diff: S.diff, seed: (Math.random() * 1e9) | 0 };
+    roster: S.roster.filter(r => !r.pending && !r.off).map(({ slot, name, char }) => ({ slot, name, char })), diff: S.diff, seed: (Math.random() * 1e9) | 0, rules: { ...S.items } };
   S.lastStart = msg; S.seen = new Set();
   S.link?.broadcast(msg);
   beginStage(msg);
-  S.sim = new Sim({ stageIdx: idx, puzzles: msg.puzzles, round, roster: msg.roster, diff: msg.diff, seed: msg.seed });
+  S.sim = new Sim({ stageIdx: idx, puzzles: msg.puzzles, round, roster: msg.roster, diff: msg.diff, seed: msg.seed, rules: msg.rules });
   S.snapT = 0;
 }
 
@@ -517,6 +532,7 @@ function freshNote(idx) {
 }
 
 function leaveToTitle(err = '') {
+  clearDrag(); S.roomCode = null; S.rules = allItems();
   if (S.mode === 'host') S.link?.broadcast({ t: 'title' });
   for (const r of S.roster || []) clearTimeout(r.dropT);
   clearTimeout(S.rejoin?.giveUp); S.rejoin = null; netNotice(''); keepAwake(false);
@@ -550,8 +566,11 @@ function beginStage(msg) {
   S.pz = { have: [], asm: false, open: false, wrong: 0 };
   S.note = { tray: shuffle([0, 1, 2, 3]), slots: [null, null, null, null], picked: null };
   S.cine = null; S.itemList = null; S.searchFx = []; S.searchList = null; S.fragList = null; $('app').classList.remove('cine'); $('cineText').hidden = true; S.stingT = 18 + Math.random() * 12;
-  clearDialog();
-  buildStageScene(msg.st, msg.roster);
+  clearDialog(); clearDrag();
+  S.rules = { ...allItems(), ...(msg.rules || {}) };
+  buildStageScene(msg.st, msg.roster, msg.seed);
+  if (!S.rules.chest) S.world.chests.forEach(ch => { ch.o.visible = ch.glow.visible = ch.mark.visible = false; });
+  const rc = $('roomChip'); rc.hidden = !S.roomCode; if (S.roomCode) rc.innerHTML = `🔑 ${T('방 코드', 'Room code')} <b>${esc(S.roomCode)}</b>`;
   const me = msg.roster.find(r => r.slot === S.mySlot);
   if (!me && S.mode === 'client') { $('lobbyStatus').textContent = T('게임이 진행 중이에요. 다음 층부터 함께해요!', 'A game is in progress. You will join from the next floor!'); return; }
   S.inGame = true; keepAwake(true);
@@ -572,12 +591,12 @@ function beginStage(msg) {
   Sound.init();
 }
 
-function buildStageScene(idx, roster) {
+function buildStageScene(idx, roster, seed = null) {
   if (S.world) { scene.remove(S.world.group); disposeGroup(S.world.group); }
   for (const p of S.players.values()) { scene.remove(p.grp); if (p.beam) scene.remove(p.beam); }
   S.players.clear();
   const st = STAGES[idx];
-  S.world = buildWorld(st, {});
+  S.world = buildWorld(st, { map: stageMap(idx, seed) });   // seed가 있으면 새장 자리를 옮긴 이번 판 지도
   lampPick = []; lampT = 0;
   scene.add(S.world.group);
   scene.fog = new THREE.FogExp2(st.fog, HIGH ? 0.062 : 0.07);
@@ -836,7 +855,7 @@ function nearWardrobe() {
   return best;
 }
 function nearChest() {
-  if (!S.world || S.me.flags & 7) return -1;
+  if (!S.world || S.me.flags & 7 || !S.rules.chest) return -1;
   let best = -1, bd = 1.6;
   S.world.chests.forEach((c, i) => { if (S.chestOpen[i]) return; const d = Math.hypot(c.c - S.me.x, c.r - S.me.z); if (d < bd) { bd = d; best = i; } });
   return best;
@@ -1098,7 +1117,7 @@ function updateHUD() {
   const tm = $('timer'); tm.textContent = fmtTime(S.time); tm.classList.toggle('low', S.time < 45);
   $('fragN').textContent = S.pz.asm ? T('완성', 'done') : `${S.pz.have.length}/4`;
   $('noteBtn').classList.toggle('ready', (S.pz.have.length === 4 || S.pz.asm) && !S.pz.open);
-  const tb = $('throwBtn'); tb.hidden = !S.inGame || $('bottom').hidden || !!(S.me.flags & 4);
+  const tb = $('throwBtn'); tb.hidden = !S.inGame || $('bottom').hidden || !!(S.me.flags & 4) || !S.rules.candy;
   $('throwN').textContent = S.me.candy; tb.classList.toggle('empty', S.me.candy <= 0 || !!(S.me.flags & 3));
   const teamHTML = [...S.players.values()].map(p => {
     const ch = CHARACTERS[p.char % CHARACTERS.length];
@@ -1185,7 +1204,7 @@ function flashScreen(color, op) {
 /* ---------- 쪽지(조각 모으기 → 순서 맞추기 → 보기 고르기) ---------- */
 function toggleNote(force) {
   const el = $('note'); const show = force ?? el.hidden;
-  el.hidden = !show; $('app').classList.toggle('note-on', show); if (show) { closeQuiz(); renderNote(); }
+  el.hidden = !show; $('app').classList.toggle('note-on', show); if (show) { closeQuiz(); renderNote(); } else clearDrag();
 }
 // 1~2학년은 조각에 번호를 붙여 순서 맞추기를 쉽게 한다
 const lowGrade = () => (S.playGrade ?? S.grade) <= 2;
@@ -1210,6 +1229,7 @@ function bindRead(body, quiz, auto) {
   if (auto) speak(text);
 }
 function renderNote() {
+  clearDrag();
   if (!S.puzzle) return;
   const body = $('noteBody'), N = S.puzzle.parts.length, have = S.pz.have;
   $('noteCount').textContent = S.pz.asm ? T('문제 완성', 'Question complete') : T(`${have.length} / ${N} 조각`, `${have.length} / ${N} pieces`);
@@ -1244,6 +1264,11 @@ function renderNote() {
   if (glue) glue.onclick = () => sendInput({ t: 'arrange', order: S.note.slots.slice() });
 }
 // 조각 옮기기: to는 칸 번호 또는 'tray'. 칸끼리는 서로 바꾸고, 차 있는 칸에 놓으면 있던 조각은 아래로 돌아간다
+// 끌고 있던 조각 복제본을 모두 치운다(쪽지 창을 다시 그리거나 닫을 때, 판이 바뀔 때, 처음 화면으로 갈 때)
+function clearDrag() {
+  document.querySelectorAll('.drag-ghost').forEach(g => g.remove());
+  document.querySelectorAll('.piece.lifted').forEach(p => p.classList.remove('lifted'));
+}
 function placePiece(i, from, to) {
   const s = S.note.slots;
   if (to === 'tray') { if (from !== 'tray') s[from] = null; }
@@ -1290,6 +1315,7 @@ function dragPiece(el) {
   };
   el.addEventListener('pointerup', (e) => end(e, false));
   el.addEventListener('pointercancel', (e) => end(e, true));
+  el.addEventListener('lostpointercapture', (e) => { if (e.pointerId === id) end(e, true); });
 }
 function noteKey(e) {
   // 숫자 1~4로 보기 고르기
@@ -1341,6 +1367,7 @@ $('quizClose').onclick = closeQuiz;
 $('noteBtn').onclick = () => toggleNote();
 $('noteClose').onclick = () => toggleNote(false);
 $('itemBtn').onclick = useItem;
+$('roomChip').onclick = () => { if (S.roomCode) toast(T(`🔑 방 코드 ${S.roomCode} — 끊긴 친구나 새 친구가 이 코드로 들어오면 지금 층부터 함께해요`, `🔑 Room code ${S.roomCode}: a friend who dropped out, or a new friend, can join this floor with this code`), 6000); };
 $('actBtn').onclick = act;
 
 /* ---------- 대화창 ---------- */
@@ -1447,6 +1474,8 @@ function openSettings() {
     ${seg('setDiff', T('괴물 세기', 'Monster speed'), T([['auto', '학년에 맞게'], ['easy', '느림'], ['normal', '보통'], ['hard', '빠름']], [['auto', 'By grade'], ['easy', 'Slow'], ['normal', 'Normal'], ['hard', 'Fast']]), S.diffSetting)}
     ${seg('setQ', T('그래픽', 'Graphics'), T([['high', '고급'], ['low', '가볍게(태블릿)']], [['high', 'High'], ['low', 'Light (tablet)']]), quality)}
     ${seg('setSnd', T('소리', 'Sound'), T([['on', '켜기'], ['off', '끄기']], [['on', 'On'], ['off', 'Off']]), Sound.muted ? 'off' : 'on')}
+    ${itemRow('setItems')}
+    <p class="set-note">${T('아이템은 누를 때마다 켜고 꺼요. 친구와 할 때는 방장 기기의 설정이 모두에게 적용돼요.', 'Tap an item to turn it on or off. When playing with friends, the host\'s settings apply to everyone.')}</p>
     ${T(`<ul class="howto"><li><b>움직이기</b>화면 왼쪽을 누르고 끌기</li><li><b>숨기·상자</b>오른쪽 아래 노란 단추 누르기</li><li><b>쪽지·아이템</b>사탕 단추 왼쪽의 쪽지·아이템 단추 누르기</li><li><b>사탕 던지기</b>오른쪽 아래 사탕 단추를 끌었다 놓기</li></ul>
     <p class="howto-pc">PC: WASD 움직이기 · E 숨기·상자 · Q 아이템 · 마우스 클릭 사탕 · Tab 쪽지</p>`, `<ul class="howto"><li><b>Move</b>Press and drag on the left side of the screen</li><li><b>Hide · Box</b>Press the yellow button at the bottom right</li><li><b>Note · Item</b>Press the note or item button left of the candy button</li><li><b>Throw candy</b>Drag and release the candy button at the bottom right</li></ul>
     <p class="howto-pc">PC: WASD move · E hide/box/search · Q item · Mouse click candy · Tab note</p>`)}
@@ -1457,6 +1486,7 @@ function openSettings() {
   bind('setDiff', v => { S.diffSetting = v; store.set('pumpkin3-diff', v); });
   bind('setQ', v => { if (v !== quality) { store.set('pumpkin2-q', v); location.reload(); } });
   bind('setSnd', v => { Sound.setMuted(v === 'off'); $('muteIcon').textContent = Sound.muted ? '🔇' : '🔊'; });
+  bindItemRow($('setItems'));
   $('setEdit').onclick = openEditor; $('setCredit').onclick = openCredits; $('setClose').onclick = closeModal;
 }
 
@@ -1474,6 +1504,8 @@ function showScreen(id) { ['loading', 'title', 'grade', 'mode', 'lobby'].forEach
 function setTitleErr(t) { $('titleErr').textContent = t; if (t) showScreen('title'); }
 function myName() { const n = $('nameIn').value.trim().slice(0, T(6, 10)) || T('학생', 'Player'); S.myName = n; store.set('pumpkin2-name', n); return n; }
 function renderLobby() {
+  if (S.mode === 'host' && !$('lobbyItems').dataset.ready) { $('lobbyItems').innerHTML = itemRow('lobbyItemRow'); $('lobbyItems').dataset.ready = '1'; bindItemRow($('lobbyItemRow'), broadcastLobby); }
+  $('lobbyItems').hidden = S.mode !== 'host'; $('lobbyRules').hidden = S.mode !== 'client';
   $('members').innerHTML = S.roster.map(r => { const ch = CHARACTERS[r.char % CHARACTERS.length]; return `<li><i style="background:${ch.color}"></i>${esc(r.name)} · ${ch.costume}${r.slot === 0 ? ' 👑' : ''}<small>${r.pending ? T('들어오는 중', 'joining') : r.slot === S.mySlot ? T('나', 'me') : ''}</small></li>`; }).join('');
   setSeg('segStage', String(S.startStage));
 }

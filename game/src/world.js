@@ -31,7 +31,7 @@ function addFade(mat) {
 const std = ({ roughness, metalness, ...o }) => new THREE.MeshLambertMaterial(o);
 
 export function buildWorld(stage, opts) {
-  const g = parseMap(stage.map);
+  const g = parseMap(opts.map || stage.map);   // opts.map: 새장 자리를 옮긴 이번 판 지도
   const group = new THREE.Group();
   const W = g.W, H = g.H;
   const props = [], lights = [], animated = [], chests = [];

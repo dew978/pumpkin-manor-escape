@@ -1,6 +1,6 @@
 // 방장 기기에서만 도는 판정: 괴물 AI, 잡기·새장·구출, 숨기, 쪽지 조각, 퍼즐, 시간.
 // 학생 위치는 각 기기가 보내 준 값을 그대로 믿는다(교실용이라 부정행위 방지는 하지 않음).
-import { STAGES, MONSTERS, PLAYER_SPEED, DIFF_SPEED, CANDY_PER_FLOOR, monsterSpots, SEARCHABLE, SEARCH_CODES, SEARCH_SPOTS, SEARCH_LOCK } from './config.js';
+import { STAGES, MONSTERS, PLAYER_SPEED, DIFF_SPEED, CANDY_PER_FLOOR, monsterSpots, SEARCHABLE, SEARCH_CODES, SEARCH_SPOTS, SEARCH_LOCK, stageMap, allItems } from './config.js';
 import { josa, T } from './util.js';
 import { parseMap, tileOf, dist, bfs, lineOfSight, slideMove, followPath, angleDiff, rng } from './grid.js';
 
@@ -13,10 +13,12 @@ export const LURE_MAX = 3;
 
 export class Sim {
   // puzzles: 이 층의 쪽지 문제들(차례로 하나씩). round: 몇 번째 쪽지부터(다시 도전하면 실패한 쪽지부터)
-  constructor({ stageIdx, puzzles, puzzle, round = 0, chestQuiz = [], roster, diff = 'easy', seed = Date.now() }) {
+  // rules: 켠 아이템(모래시계·수정구·날쌘 물약·사탕·호박 상자), 함께 할 때는 방장 규칙
+  constructor({ stageIdx, puzzles, puzzle, round = 0, chestQuiz = [], roster, diff = 'easy', seed = Date.now(), rules = {} }) {
     this.stageIdx = stageIdx;
     this.stage = STAGES[stageIdx];
-    this.g = parseMap(this.stage.map);
+    this.rules = { ...allItems(), ...rules };
+    this.g = parseMap(stageMap(stageIdx, seed));   // 새장 자리는 판마다 바뀐다
     this.puzzles = puzzles?.length ? puzzles : [puzzle];
     this.notes = this.puzzles.length;
     this.round = Math.max(0, Math.min(this.notes - 1, round | 0));
@@ -64,10 +66,11 @@ export class Sim {
     }
     this.cand = cand; this.usedSpots = new Set();
     this.hideNote();
-    // 아이템: 후보 칸마다 하나, 모래시계가 가장 많다
-    this.items = this.shuffle(sp.i.slice()).map((s, i) => ({ id: i, type: ['time', 'crystal', 'potion', 'time', 'crystal', 'time'][i % 6], x: s.c, z: s.r, taken: false }));
+    // 아이템: 후보 칸마다 하나, 모래시계가 가장 많다(끈 아이템은 빼고 켠 것끼리 나눈다)
+    const kinds = ['time', 'crystal', 'potion', 'time', 'crystal', 'time'].filter(k => this.rules[k]);
+    this.items = kinds.length ? this.shuffle(sp.i.slice()).map((s, i) => ({ id: i, type: kinds[i % kinds.length], x: s.c, z: s.r, taken: false })) : [];
     // 호박 상자: 다가가 문제를 맞히면 아이템. 상자마다 한 번만 열린다
-    this.chests = sp.c.map((s, i) => ({ id: i, c: s.c, r: s.r, opened: false }));
+    this.chests = this.rules.chest ? sp.c.map((s, i) => ({ id: i, c: s.c, r: s.r, opened: false })) : [];
     // 사탕: 시작 위치에서 떨어진 빈 바닥에 서로 떨어뜨려 흩어 둔다(점수·별)
     const used = new Set([...sp.f, ...sp.i, ...sp.P].map(t => t.r * this.g.W + t.c)), free = [];
     for (let r = 1; r < this.g.H - 1; r++) for (let c = 1; c < this.g.W - 1; c++) {
@@ -76,7 +79,7 @@ export class Sim {
     }
     this.candies = [];
     this.lures = []; this.lureSeq = 0; this.candyTip = new Set();   // 던진 사탕(괴물 꾀기)
-    for (const t of this.shuffle(free)) {
+    for (const t of this.rules.candy ? this.shuffle(free) : []) {
       if (this.candies.length >= CANDY_PER_FLOOR) break;
       if (this.candies.some(o => Math.hypot(o.x - t.c, o.z - t.r) < 5)) continue;
       this.candies.push({ x: t.c, z: t.r, taken: false });
@@ -221,8 +224,8 @@ export class Sim {
       return;
     }
     const roll = this.rand();
-    if (roll < 0.5) { p.candy++; this.snd('pickup', p.x, p.z, p.slot); this.toast(T(`${icon} ${name}에서 사탕 1개를 찾았어요! 쪽지는 없었어요`, `${icon} You found 1 candy in the ${name}! No note here`), p.slot); }
-    else if (roll < 0.75) { this.time += 10; this.snd('pickup', p.x, p.z, p.slot); this.toast(T(`${icon} ${name} 속에 반짝이는 모래가… 시간 +10초! 쪽지는 없었어요`, `${icon} Sparkling sand in the ${name}… Time +10 s! No note here`), p.slot); }
+    if (roll < 0.5 && this.rules.candy) { p.candy++; this.snd('pickup', p.x, p.z, p.slot); this.toast(T(`${icon} ${name}에서 사탕 1개를 찾았어요! 쪽지는 없었어요`, `${icon} You found 1 candy in the ${name}! No note here`), p.slot); }
+    else if (roll < 0.75 && this.rules.time) { this.time += 10; this.snd('pickup', p.x, p.z, p.slot); this.toast(T(`${icon} ${name} 속에 반짝이는 모래가… 시간 +10초! 쪽지는 없었어요`, `${icon} Sparkling sand in the ${name}… Time +10 s! No note here`), p.slot); }
     else {
       const jokes = T([`${name}에는 거미줄뿐이에요`, `${name}에는 먼지만 가득해요`, `${name}에는 낡은 양말 한 짝뿐이에요`, `${name} 뒤에서 박쥐가 푸드덕 날아갔어요`],
         [`Only cobwebs in the ${name}`, `The ${name} is full of dust`, `Just one old sock in the ${name}`, `A bat flapped out from behind the ${name}`]);
@@ -246,7 +249,7 @@ export class Sim {
 
   // 사탕 던지기: 겨눈 곳(최대 THROW_RANGE칸)으로 날아간다
   throwCandy(p, tx, tz) {
-    if (p.candy <= 0 || p.throwT > 0 || p.caged >= 0 || p.escaped || p.hidden >= 0 || !Number.isFinite(tx) || !Number.isFinite(tz)) return;
+    if (!this.rules.candy || p.candy <= 0 || p.throwT > 0 || p.caged >= 0 || p.escaped || p.hidden >= 0 || !Number.isFinite(tx) || !Number.isFinite(tz)) return;
     let dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
     if (d < 0.3) { dx = Math.sin(p.face); dz = Math.cos(p.face); d = 1; tx = p.x + dx * 3; tz = p.z + dz * 3; }
     const ux = dx / d, uz = dz / d, far = Math.min(Math.hypot(tx - p.x, tz - p.z), THROW_RANGE);
@@ -395,10 +398,12 @@ export class Sim {
     ch.opened = true;
     if (!ok) { this.toast(T('🎃 상자가 "땡!" 하고 잠겼어요. 다른 상자를 찾아봐요', '🎃 "Bzzt!" The box locked. Find another box'), p.slot); this.snd('cage', ch.c, ch.r, p.slot); return; }
     this.stats.chestOk++; this.snd('pickup', ch.c, ch.r);
-    if (!p.item) {
-      p.item = this.rand() < 0.5 ? 'crystal' : 'potion';
+    const gifts = ['crystal', 'potion'].filter(k => this.rules[k]);
+    if (!p.item && gifts.length) {
+      p.item = gifts[Math.floor(this.rand() * gifts.length)];
       this.toast(p.item === 'crystal' ? T('🎃 정답! 상자에서 🔮 수정구가 나왔어요 (Q로 쓰기)', '🎃 Correct! A 🔮 crystal ball came out of the box (Q to use)') : T('🎃 정답! 상자에서 🧪 날쌘 물약이 나왔어요 (Q로 쓰기)', '🎃 Correct! A 🧪 speed potion came out of the box (Q to use)'), p.slot);
-    } else { this.time += 20; this.toast(T(`🎃 ${josa(p.name, '이가')} 상자 문제를 맞혔어요! 시간 +20초`, `🎃 ${p.name} solved a box question! Time +20 s`)); }
+    } else if (this.rules.time) { this.time += 20; this.toast(T(`🎃 ${josa(p.name, '이가')} 상자 문제를 맞혔어요! 시간 +20초`, `🎃 ${p.name} solved a box question! Time +20 s`)); }
+    else this.toast(T('🎃 정답! 상자 속에는 호박씨만 가득했어요', '🎃 Correct! The box was full of pumpkin seeds'), p.slot);
   }
 
   gameOver(reason) { if (this.phase !== 'play') return; this.phase = 'over'; this.overReason = reason; this.snd('bell', 0, 0); }

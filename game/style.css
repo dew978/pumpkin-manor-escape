@@ -441,3 +441,12 @@ html[lang="en"] .howto b { min-width: 124px; }
 
 /* 방장과 끊겨 다시 잇는 중: 화면 위 가운데(게임 화면은 그대로 둔다) */
 #netNotice { position: absolute; z-index: 6; top: 128px; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 14px; background: rgba(60, 20, 20, .94); border: 2px solid #ff9a7a; color: #ffe2d6; font-size: 17px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+
+/* 게임 중 방 코드(끊긴 친구·새 친구가 중간에 들어올 수 있게). 누르면 크게 알려 준다 */
+.room-chip { margin-top: 6px; pointer-events: auto; background: rgba(40, 24, 10, .85); border: 1.5px solid var(--candle); border-radius: 999px; color: var(--parchment); font-size: 13px; padding: 3px 10px; cursor: pointer; }
+.room-chip b { font-family: var(--f-num); font-weight: 400; letter-spacing: .14em; color: var(--candle); font-size: 15px; }
+/* 아이템 켜고 끄기 줄: 여러 개를 따로 켜고 끈다 */
+.seg.items { flex-wrap: wrap; }
+.seg.items button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
+.set-note { font-size: 13px; color: #6a4a2a; margin: -2px 0 6px; }
+#lobbyItems .seg.items { justify-content: center; margin: 4px 0 10px; }

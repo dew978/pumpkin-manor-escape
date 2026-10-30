@@ -24,6 +24,7 @@
     <div class="hud-l">
       <div class="stage-name" id="stageName">저택 1층</div>
       <div class="stage-sub" id="stageSub"></div>
+      <button class="room-chip" id="roomChip" hidden title="방 코드: 누르면 크게 보여요" data-en-title="Room code: tap to show it big"></button>
     </div>
     <div class="hud-c"><div id="timer">6:00</div><small data-en="until midnight">자정까지</small></div>
     <div class="hud-r" id="team"></div>
@@ -113,8 +114,10 @@
       <ul class="members" id="members"></ul>
       <div id="hostCtl">
         <div class="seg" id="segStage"><span data-en="Start floor">시작 층</span><button data-v="0" data-en="1F">1층</button><button data-v="1" data-en="Library">서고</button><button data-v="2" data-en="Cellar">창고</button><button data-v="3" data-en="2F">2층</button><button data-v="4" data-en="Patch">호박밭</button><button data-v="5" data-en="Graveyard">묘지</button></div>
+        <div id="lobbyItems"></div>
         <button class="big" id="startBtn" data-en="Everyone, go!">모두 출발!</button>
       </div>
+      <p class="lead" id="lobbyRules" hidden></p>
       <p class="lead" id="lobbyStatus"></p>
       <button class="link" id="leaveBtn" data-en="Leave">나가기</button>
     </div>

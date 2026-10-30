@@ -218,6 +218,41 @@ export const STAGES = [
   },
 ];
 
+// 켜고 끌 수 있는 아이템(설정·방장 대기실). 함께 할 때는 방장 기기의 규칙을 모두에게 똑같이 쓴다
+export const ITEM_RULES = [['time', T('⏳ 모래시계', '⏳ Hourglass')], ['crystal', T('🔮 수정구', '🔮 Crystal ball')], ['potion', T('🧪 날쌘 물약', '🧪 Speed potion')], ['candy', T('🍬 사탕', '🍬 Candy')], ['chest', T('🎃 호박 상자', '🎃 Pumpkin box')]];
+export const allItems = () => Object.fromEntries(ITEM_RULES.map(([k]) => [k, true]));
+
+// 새장 자리: 판마다(seed) 바뀐다. 시작 자리에서 9칸 넘게 떨어지고 둘레 8칸이 모두 빈 바닥인 칸 중에서,
+// 새장을 놓아도 다른 바닥으로 가는 길이 막히지 않는 곳을 고른다. 방장과 친구 기기가 같은 seed로 같은 지도를 만든다
+export function stageMap(stageIdx, seed) {
+  const st = STAGES[stageIdx];
+  if (seed == null) return st.map;
+  const rows = st.map.map(r => r.split('')), H = rows.length, W = rows[0].length;
+  const at = (c, r) => rows[r]?.[c] ?? '#', solid = (c, r) => SOLID.has(at(c, r));
+  let P = null; const E = [];
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const ch = rows[r][c]; if (ch === 'P') P = { c, r }; else if (ch === 'E') E.push({ c, r: r + 1 }); else if (ch === 'X') rows[r][c] = '.'; }
+  const reach = () => {
+    const seen = new Set([P.r * W + P.c]), q = [P];
+    while (q.length) { const t = q.pop(); for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const c = t.c + dc, r = t.r + dr, k = r * W + c; if (!seen.has(k) && !solid(c, r)) { seen.add(k); q.push({ c, r }); } } }
+    return seen;
+  };
+  const before = reach(), cand = [];
+  for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
+    if (at(c, r) !== '.' || !before.has(r * W + c) || Math.hypot(c - P.c, r - P.r) < 9 || E.some(e => Math.hypot(c - e.c, r - e.r) < 4)) continue;
+    let ok = true; for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1; dc++) if (at(c + dc, r + dr) !== '.') { ok = false; break; }
+    if (ok) cand.push({ c, r });
+  }
+  let s = (seed >>> 0) ^ 0x9e3779b9;   // 작은 난수(mulberry32)
+  const rand = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
+  for (const t of cand.slice(0, 30)) {
+    rows[t.r][t.c] = 'X';
+    if (reach().size === before.size - 1) return rows.map(r => r.join(''));
+    rows[t.r][t.c] = '.';
+  }
+  return st.map;   // 알맞은 곳이 없으면 지도에 그려 둔 자리
+}
+
 export const SOLID = new Set(['#', 'E', 'H', 'X', 'L', 'B', 'Q', 'T', 'h', 'R', 'b', 'c', 'o', 'g', 't', 's', 'w']);
 
 // 속도 단위: 칸/초. 학생 기본 속도 3.4.
