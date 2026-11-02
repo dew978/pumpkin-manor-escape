@@ -342,7 +342,7 @@ async function startHost() {
         else if (s === 'error') $('lobbyStatus').textContent = T(`연결 문제: ${d}. 인터넷을 확인하고 다시 만들어 주세요.`, `Connection problem: ${d}. Check the internet and create the room again.`);
       },
       // 친구에게는 아직 아무도 고르지 않은 분장을 준다
-      join: (slot) => { const used = new Set(S.roster.map(r => r.char)); const char = [0, 1, 2, 3].find(c => !used.has(c)) ?? slot; S.roster.push({ slot, name: T(`친구${slot}`, `Friend ${slot}`), char, pending: true }); broadcastLobby(); },
+      join: (slot) => { const used = new Set(S.roster.map(r => r.char)); const char = [0, 1, 2, 3].find(c => !used.has(c)) ?? slot; S.roster.push({ slot, name: T(`친구${slot}`, `Friend ${slot}`), char, pending: true, joined: performance.now() }); broadcastLobby(); },
       held: (slot) => S.roster.some(r => r.slot === slot && r.off),
       leave: (slot) => markOff(slot),
       data: (m, slot) => {
@@ -407,7 +407,11 @@ setInterval(() => {
   if (S.mode !== 'host' || !S.link) return;
   const now = performance.now();
   for (const r of S.roster) {
-    if (r.slot === S.mySlot || r.pending || r.off || now - (r.seen ?? now) < STALE_MS) continue;
+    if (r.slot === S.mySlot || r.off) continue;
+    // 들어오는 중인데 12초 넘게 인사(hello)가 없으면: 친구 기기가 포기한 반쪽 연결이다. 자리를 비운다
+    // (남겨 두면 대기실의 '모두 출발!'도 '들어오는 중인 친구가 있어요'로 막혔다)
+    if (r.pending) { if (now - (r.joined ?? now) > 12000) { dropMember(r.slot); S.link.kick(r.slot); } continue; }
+    if (now - (r.seen ?? now) < STALE_MS) continue;
     markOff(r.slot); S.link.kick(r.slot);   // 친구 기기가 살아 있으면 닫힘을 받고 스스로 다시 들어온다
   }
 }, 1000);
@@ -789,7 +793,7 @@ function handleEvent(e) {
   else if (e.k === 'arrangeWrong' && e.slot === S.mySlot) { Sound.bad(); renderNote(); $('noteSlots')?.classList.add('shake'); toast(lowGrade() ? T('순서가 맞지 않아요. 번호 순서대로 놓아요', 'Wrong order. Place them in number order') : T('순서가 맞지 않아요. 이웃한 가장자리 색이 같게 조각을 끌어서 바꿔 봐요', 'Wrong order. Drag the pieces so touching edges have the same color')); }
   else if (e.k === 'frag') {
     const p = S.players.get(e.slot), ch = CHARACTERS[(p?.char ?? 0) % CHARACTERS.length];
-    if (S.puzzle) say(fragLines(S.stageIdx, e.n, S.puzzle.parts[e.id], { face: ch.face, name: p?.name || ch.costume, color: ch.color }, e.n < 4 ? roomHint() : null, S.round, S.round === S.puzzles.length - 1));
+    if (S.puzzle) { const lines = fragLines(S.stageIdx, e.n, S.puzzle.parts[e.id], { face: ch.face, name: p?.name || ch.costume, color: ch.color }, e.n < 4 ? roomHint() : null, S.round, S.round === S.puzzles.length - 1); say(e.slot === S.mySlot ? lines : lines.slice(0, 1)); }
     if (e.slot === S.mySlot) flashScreen('#fff2c0', 0.25);
   }
   else if (e.k === 'answerWrong') {
@@ -950,7 +954,7 @@ function roomHint() {
   return lines[Math.floor(Math.random() * lines.length)];
 }
 let hintT = 0;
-$('detector').onclick = () => { if (performance.now() < hintT || !S.inGame) return; hintT = performance.now() + 5000; say([lumiLine(roomHint())]); };
+$('detector').onclick = () => { if (performance.now() < hintT || !S.inGame) return; hintT = performance.now() + 5000; say([lumiLine(roomHint())], { now: true }); };
 function useItem() { if (S.me.item >= 0 && S.phase === 'play') sendInput({ t: 'use' }); }
 
 /* ---------- 방장 판정: 화면 그리기와 따로 30Hz로 돈다(방장 탭이 가려져도 멈추지 않게) ---------- */

@@ -142,38 +142,47 @@ export function fragLines(stageIdx, n, part, kid, hint, round = 0, last = true) 
 }
 export const lumiLine = (text) => ({ face: LUMI_FACE, name: T('루미', 'Lumi'), color: '#9fd8ff', text });
 
-// 대사창: 한 줄씩 글자가 찍히고, 다 읽을 시간이 지나면(또는 누르면) 다음 줄
+// 대사창: 한 줄씩 글자가 찍히고, 다 읽을 시간이 지나면(또는 누르면) 다음 줄. ✕를 누르면 모두 닫는다.
+// 기다리는 줄은 MAX_QUEUE줄까지만 둔다: 4명이 연달아 쪽지를 주우면 대사가 1분 넘게 쌓여 화면을 가렸다(2026-11-02 교실)
+const MAX_QUEUE = 2;
 const queue = [];
 let box = null, timer = 0, typing = 0;
 function ensureBox() {
   if (box) return box;
   box = document.createElement('div');
   box.id = 'dialog'; box.hidden = true; box.setAttribute('aria-live', 'polite');
-  box.innerHTML = '<img class="face" alt=""><div class="say"><b class="who"></b><p class="line"></p></div><span class="next">▶</span>';
-  box.addEventListener('pointerdown', (e) => { e.stopPropagation(); next(); });
+  box.innerHTML = '<img class="face" alt=""><div class="say"><b class="who"></b><p class="line"></p></div><span class="next">▶</span><button class="x" type="button" aria-label="' + T('대사 닫기', 'Close dialog') + '">✕</button>';
+  box.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.target.closest('.x')) clearDialog(); else next(); });
   document.getElementById('app').appendChild(box);
   return box;
 }
 function show(l) {
-  const b = ensureBox();
-  b.querySelector('.face').src = l.face; b.querySelector('.face').style.borderColor = l.color;
-  const who = b.querySelector('.who'); who.textContent = l.name; who.style.color = l.color;
-  const line = b.querySelector('.line'); line.textContent = '';
-  b.hidden = false; document.getElementById('app').classList.add('dlg-on'); b.classList.remove('in'); void b.offsetWidth; b.classList.add('in');
-  // 글자를 한 자씩(초등학생이 따라 읽기 좋게 조금 천천히)
-  let i = 0; clearInterval(typing);
-  typing = setInterval(() => { i++; line.textContent = l.text.slice(0, i); if (i >= l.text.length) clearInterval(typing); }, 28);
-  clearTimeout(timer); timer = setTimeout(next, 2200 + l.text.length * T(75, 45));   // 영어는 글자 수가 많아서 글자당 시간을 줄인다
+  const b = ensureBox(), text = String(l?.text ?? '');
+  // 다음 줄로 넘어갈 시간을 맨 먼저 잡는다(무엇이 잘못돼도 대사창이 그대로 남지 않게). 긴 줄도 6.5초면 넘어간다
+  clearTimeout(timer); timer = setTimeout(next, Math.min(6500, 1800 + text.length * T(60, 40))   /* 영어는 글자 수가 많아서 글자당 시간을 줄인다 */);
+  clearInterval(typing);
+  try {
+    b.querySelector('.face').src = l.face || ''; b.querySelector('.face').style.borderColor = l.color || '';
+    const who = b.querySelector('.who'); who.textContent = l.name || ''; who.style.color = l.color || '';
+    const line = b.querySelector('.line'); line.textContent = '';
+    b.hidden = false; document.getElementById('app').classList.add('dlg-on'); b.classList.remove('in'); void b.offsetWidth; b.classList.add('in');
+    // 글자를 한 자씩(초등학생이 따라 읽기 좋게 조금 천천히)
+    let i = 0;
+    typing = setInterval(() => { i++; line.textContent = text.slice(0, i); if (i >= text.length) clearInterval(typing); }, 28);
+  } catch (e) { console.warn('대사창', e); next(); }
 }
 function next() {
   clearTimeout(timer); clearInterval(typing);
   const l = queue.shift();
   if (l) show(l); else if (box) { box.hidden = true; document.getElementById('app').classList.remove('dlg-on'); }
 }
-export function say(lines) {
+// now: 밀린 줄을 버리고 이 대사를 바로 보여 준다(감지기 힌트처럼 지금 필요한 말)
+export function say(lines, { now = false } = {}) {
   const idle = !box || box.hidden;
-  queue.push(...lines);
-  if (idle) next();
+  if (now) queue.length = 0;
+  queue.push(...lines.filter(l => l && l.text));
+  while (queue.length > MAX_QUEUE + (idle || now ? 1 : 0)) queue.shift();   // 오래된 줄부터 버린다
+  if (idle || now) next();
 }
 export function clearDialog() { queue.length = 0; clearTimeout(timer); clearInterval(typing); if (box) box.hidden = true; document.getElementById('app').classList.remove('dlg-on'); }
 export const dialogOpen = () => !!box && !box.hidden;

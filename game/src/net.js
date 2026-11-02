@@ -68,7 +68,8 @@ function keepSignal(peer, isDead) {
 }
 
 // 방 만들기. cb: { status(s, detail), join(slot), leave(slot), data(msg, slot), held(slot) }  held: 끊긴 친구에게 남겨 둔 자리인지
-// 들어온 연결은 빈 자리 번호를 받는다(1~7: 다시 들어온 친구는 인사(hello) 뒤에 move로 원래 자리로 옮긴다).
+// 들어온 연결은 빈 자리 번호를 받는다(1부터 비어 있는 가장 작은 수. 다시 들어온 친구는 인사(hello) 뒤에 move로 원래 자리로 옮긴다).
+// 예전에는 1~7번만 써서, 친구 기기는 포기했는데 방장 쪽에만 열린 반쪽 연결이 쌓이면 번호가 바닥나 누구도 못 들어왔다(2026-11-02 교실).
 // 4명이 넘는지는 인사를 받은 뒤 main.js에서 판단한다(끊긴 줄 모르는 옛 연결 때문에 꽉 찼다고 거절하지 않게)
 export async function hostRoom(cb) {
   await loadPeer();
@@ -104,8 +105,7 @@ export async function hostRoom(cb) {
   peer.on('connection', (conn) => {
     conn.on('open', () => {
       if (dead) return;
-      const slot = [1, 2, 3, 4, 5, 6, 7].find((s) => !conns.has(s) && !cb.held?.(s));
-      if (!slot) { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 400); return; }
+      let slot = 1; while (conns.has(slot) || cb.held?.(slot)) slot++;
       conn.slot = slot; conns.set(slot, conn);
       conn.on('data', joiner((m) => { if (!dead && conns.get(conn.slot) === conn) cb.data(m, conn.slot); }));
       conn.on('error', (e) => console.warn('연결 오류', conn.slot, e?.type || e));

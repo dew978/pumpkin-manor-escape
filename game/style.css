@@ -450,3 +450,7 @@ html[lang="en"] .howto b { min-width: 124px; }
 .seg.items button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
 .set-note { font-size: 13px; color: #6a4a2a; margin: -2px 0 6px; }
 #lobbyItems .seg.items { justify-content: center; margin: 4px 0 10px; }
+
+/* 대사창 닫기(✕): 누르면 밀린 대사까지 모두 닫는다 */
+#dialog .x { position: absolute; top: 6px; right: 8px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .1); color: var(--parchment); font-size: 15px; line-height: 30px; padding: 0; cursor: pointer; }
+#dialog .x:hover { background: rgba(255, 255, 255, .22); }
